@@ -1,0 +1,14 @@
+{
+	"id": "obsidian-tagfolder-extension",
+	"name": "obsidian-tagfolder Extension",
+	"version": "1.0.0",
+	"minAppVersion": "0.15.0",
+	"description": "Make unique folders for every tag combination, so you can have same titled notest with different tags and there wont be an error.",
+	"author": "Raphael Stumm",
+	"authorUrl": "",
+	"fundingUrl": "",
+	"isDesktopOnly": true,
+	"dependencies": {
+		"obsidian-tagfolder": "0.18.7"
+	}
+}
