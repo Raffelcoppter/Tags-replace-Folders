@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <div class="containerForRenamingOrCreatingTag" id="containerForRenamingOrCreating1">
+    <div class="fakeTagExpander"><div class="arrow"></div></div>
+    <input class="renamingOrCreatingTag" type="text" value="Unbenannt" id="input1">
+  </div>
+
+ 
+  
+  
+
+
+</body>
+  <script>
+    let input = document.getElementById("input1")
+    input.focus()
+    input.select();
+    input.addEventListener("keypress", (ev) => {
+      if(ev.key == "Enter") {
+        const inputValue = input.value;
+        
+        const containerForRenamingOrCreating1 = document.getElementById("containerForRenamingOrCreating1");
+        containerForRenamingOrCreating1.remove();
+        
+        let tag = document.createElement("div");
+        tag.classList.add("containerForTag");
+        
+        let tagExpander = document.createElement("div");
+        tagExpander.classList.add("tagExpander");
+        
+        let arrow = document.createElement("div");
+        arrow.classList.add("arrow");
+
+        let noteExpander = document.createElement("span");
+        noteExpander.classList.add("noteExpander");
+        noteExpander.textContent = inputValue;
+        
+        tagExpander.appendChild(arrow);
+
+        tag.appendChild(tagExpander);
+        tag.appendChild(noteExpander);
+
+        document.body.appendChild(tag)
+        
+
+      }
+    })
+  </script>
+</html>

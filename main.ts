@@ -1,19 +1,21 @@
 import { MathNote } from 'mathNotes/mathNoteManagement';
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, TFolder, TFile, MetadataCache, TAbstractFile } from 'obsidian';
+import { App, WorkspaceLeaf, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, TFolder, TFile, MetadataCache, TAbstractFile } from 'obsidian';
 const path = require("path");
+import { TagFolderView, VIEW_TYPE_TAGFOLDER } from 'TagFolderView';
 
 
-export default class CombinedPlugin extends Plugin {
-
-	
-	//combinedPluginSettings: CombinedPluginSettings
+export default class TagsPlus extends Plugin {
 
 	
+	combinedPluginSettings: CombinedPluginSettings
+
+	lastNoteIntegratedIntoUniqueFolderStructure: boolean = false;
 
 	async onload() {
 		
-		//await this.loadSettings();
-		//this.addSettingTab(new SampleSettingTab(this.app, this));
+		await this.loadSettings();
+		this.addSettingTab(new SampleSettingTab(this.app, this));
+		this.registerView(VIEW_TYPE_TAGFOLDER, (leaf) => new TagFolderView(leaf))
 		this.app.workspace.onLayoutReady(this.onLayoutReady.bind(this))
 		
 	}
@@ -23,34 +25,39 @@ export default class CombinedPlugin extends Plugin {
 
 		await this.createUniqueFolderStructure();
 		await this.cleanUpUniqueFolderStructure();
+
+		await this.activateView();
 		
 		this.registerEvent(this.app.vault.on("delete", this.onDeleteAfterLayoutReady.bind(this)))
 		this.registerEvent(this.app.vault.on("create", this.onCreateAfterLayoutReady.bind(this)));
 		this.registerEvent(this.app.vault.on("modify", this.onModifyAfterLayoutReady.bind(this)))
 
+		
 		console.log("Now watching Events: Delete, Create, Modify");
+  
+		console.log("<--Exit_Funtion: onLayoutReady()");
+		
 
-		console.log("-->Exit_Funtion: onLayoutReady()");
+
 	}
 
 	private async onCreateAfterLayoutReady(abstractFile: TAbstractFile): Promise<void> {
-		console.log(`-->Enter_Funktion: onCreateAfterLayoutReady(${abstractFile.name}: TAbstractFile)`);
-		
+		console.log(`\n-->Enter_Function: onCreateAfterLayoutReady(${abstractFile.name}: TAbstractFile)`);
 
 		if(abstractFile instanceof TFile) {
-			//console.log(`${abstractFile.name} is a Note trying to place it into unique Folder Structure.`)
-			//await this.moveFileIntoUniqueFolderStructure(abstractFile);
-			//await this.createNoteBasedOnTemplate(note);
+			let note: TFile = abstractFile;
+
+			await this.createNoteBasedOnTemplate(note);
 		}
 		else {
 			console.log(`${abstractFile.name} is a folder, so nothing to do.`);
 		}
 		
-		console.log(`<--Exit_Funktion: onCreateAfterLayoutReady(${abstractFile.name}: TAbstractFile)`)
+		console.log(`<--Exit_Function: onCreateAfterLayoutReady(${abstractFile.name}: TAbstractFile)\n `)
 	}
 
 	private async onModifyAfterLayoutReady(abstractFile: TAbstractFile): Promise<void> {
-		console.log(`-->Enter_Funktion: onModifyAfterLayoutReady(${abstractFile.name}: TAbstractFile)`);
+		console.log(`\n-->Enter_Function: onModifyAfterLayoutReady(${abstractFile.name}: TAbstractFile)`);
 
 		if(abstractFile instanceof TFile) {
 			console.log(`Registered Change in Note: ${abstractFile.name}, determening if file has tags:`)
@@ -58,7 +65,7 @@ export default class CombinedPlugin extends Plugin {
 			let note: TFile = abstractFile;
 			let noteNewTags: string[] = [];
 
-			this.app.vault.read(note).then(async (noteContent) => {
+			await this.app.vault.read(note).then(async (noteContent) => {
 
 				if(/tags:\n  -(?:\s[a-zA-Z0-9_\-])/g.test(noteContent)) {
 					console.log(`Note ${note.name} has tags, determening if files have changed`)
@@ -78,32 +85,32 @@ export default class CombinedPlugin extends Plugin {
 						console.log(`Tags have changed for ${note.name}`);
 
 						await this.app.vault.createFolder(newUniqueFolderName)
-						.then((newUniqueFolder: TFolder) => {
-							console.log(`Created new Folder: ${newUniqueFolder.name}`)
+						.then(async (newUniqueFolder: TFolder) => {
+							console.log(`Created new Folder: ${newUniqueFolderName}`)
 						})
-						.catch(() => {});	//If Folder already exists it changes nothing, so no error needs to be handled.
+						.catch(() => console.log(`Folder ${newUniqueFolderName} already exists`));	//If Folder already exists it changes nothing, so no error needs to be handled.
 						
 						await this.app.vault.rename(note, `${newUniqueFolderName}/${note.name}`)
-						.then(() => console.log(`Moved File into ${newUniqueFolderName}`))
+						.then(async () => {
+							console.log(`Moved File into ${newUniqueFolderName}`)
+						})
 						.catch(async () => console.log(`In ${newUniqueFolderName} is a note with the same name,\n
 							right now no error handling, this means ${note.name} has the new Tags ${noteNewTags} but is in ${oldUniqueFolder}.\nHandle manually!`));
 
 						if(oldUniqueFolder && oldUniqueFolder.children.length == 0) await this.app.vault.delete(oldUniqueFolder, true);	//No other notes in that folder -> delete
 
-				
-						
-
 					}
 				}
 			});
-
 			
 		}
+
+		console.log(`<--Exit_Function: onModifyAfterLayoutReady(${abstractFile.name}: TAbstractFile)\n `);
 	}
 
 	private async onDeleteAfterLayoutReady(abstractFile: TAbstractFile): Promise<void> {
 
-		console.log(`-->Enter_Funktion: onDeleteAfterLayoutReady(${abstractFile.name}: TAbstractFile)`)
+		console.log(`\n-->Enter_Funktion: onDeleteAfterLayoutReady(${abstractFile.name}: TAbstractFile)`)
 
 		if(abstractFile instanceof TFile) {
 			let note: TFile = abstractFile;
@@ -112,32 +119,31 @@ export default class CombinedPlugin extends Plugin {
 			
 			let noteParent = this.app.vault.getFolderByPath(noteParentName);
 			if(noteParent) {
-				console.log(`Der Ordner von ${note.name} wurde gefunden: ${noteParentName}, checke jetzt ob dieser Ordner noch Notizen enthält`)
-				let noteNeighbors = noteParent.children;
-				console.log(noteNeighbors);
-			}
-
-			if(note.parent) {
-				console.log("he")
-				let neighbors = note.parent.children;
-				neighbors.remove(note);
-				console.log(neighbors);
-
-			}
+				console.log(`The Parent of ${note.name} was found: ${noteParentName}, checking if ${noteParentName} has other notes`)
 				
-				await this.reloadTagFolderTab();
+				if(noteParent.children.length == 0) {
+					console.log(`${noteParentName} is empty without ${note.name}.`)
+					await this.app.vault.delete(noteParent, true)
+					.then(() => console.log(`${noteParentName} was succesfully deleted.`))
+					.catch((reason) => console.log(`Error trying to delete ${noteParentName}:}n${reason}`))
+				}
+				else { 
+					console.log(`${noteParentName} is not empty, therfore it was not deleted.\nnoteParent: `)
+					console.log(`${noteParent.children}`)
+				}
+			}
+			else console.log(`There is no parent for ${note.name}`)		
+			await this.reloadTagFolderTab();
 		}
-		else {
-			console.log(`${abstractFile.name} is a folder, so nothing to do.`)
-		}
-
-		console.log(`<--Exit_Funktion: onDeleteAfterLayoutReady(${abstractFile.name}: TAbstractFile)`)
+		else console.log(`${abstractFile.name} is a folder, so nothing to do.`)
+		
+		console.log(`<--Exit_Funktion: onDeleteAfterLayoutReady(${abstractFile.name}: TAbstractFile)\n `)
 	}
 
 	onunload() {
 
 	}
-	/*
+	
 	async loadSettings() {
 		this.combinedPluginSettings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
 	}
@@ -145,12 +151,12 @@ export default class CombinedPlugin extends Plugin {
 	async saveSettings() {
 		await this.saveData(this.combinedPluginSettings);
 	}
-	*/
+	
 
 
 	private async createUniqueFolderStructure(): Promise<void> {
 
-		console.log(`-->Enter_Funktion: createUniqueFolderStructure()`)
+		console.log(`-->Enter_Function: createUniqueFolderStructure()`)
 
 		const notes = this.app.vault.getMarkdownFiles();
 
@@ -181,57 +187,30 @@ export default class CombinedPlugin extends Plugin {
 			}
 		}
 
-		console.log(`<--Exit_Funktion: createUniqueFolderStructure()`)
+		console.log(`<--Exit_Function: createUniqueFolderStructure()`)
 
 	}
 
 	private  async cleanUpUniqueFolderStructure(): Promise<void> {
-		console.log(`-->Enter_Funktion: cleanUpUniqueFolderStructure()`)
+		console.log(`-->Enter_Function: cleanUpUniqueFolderStructure()`)
 		let rootFolder = this.app.vault.getRoot();
 		let folders = rootFolder.children;
 
 		for(let folder of folders) {
 			if(folder instanceof TFolder) {
 				if(folder.children.length == 0) {
-					this.app.vault.delete(folder, true)
+					await this.app.vault.delete(folder, true)
 					.then(() => {
-						console.log("Succesfully deleted TFolder: " + folder.name)
+						console.log("Succesfully deleted Folder: " + folder.name)
 					});
 				}
 			}
 		}
-		console.log(`<--Exit_Funktion: cleanUpUniqueFolderStructure()`)
+		console.log(`<--Exit_Function: cleanUpUniqueFolderStructure()`)
 
 	}
 
-	private async moveFileIntoUniqueFolderStructure(note: TFile): Promise<void> {
-
-		console.log(`-->Enter_Funktion: moveFileIntoUniqueFolderStructure(${note.name})`)
-
-		await this.noteFullyCreated(note);
-		let metadataCache = this.app.metadataCache.getFileCache(note);
-		if(metadataCache && metadataCache.frontmatter && metadataCache.frontmatter["tags"]) {
-			let folderName = this.getFolderNameFromTags(metadataCache.frontmatter["tags"]);
-
-			await this.app.vault.createFolder(folderName)
-			.then(async () => await this.app.vault.rename(note, `${folderName}/${note.name}`))
-			.catch(async () => {
-				
-				await this.app.vault.rename(note, `${folderName}/${note.name}`)
-				.catch(async () => {
-					//This means that there is a note with the same Name with that tag.
-					new Notice("There already is a file with that name and those tags!");
-					await this.app.vault.delete(note);
-				});
-			
-			});
-		
-			//Check ob Folder existiert, wenn nicht dann erstelle einen. Anders herum für delete. FÜr modify, check ob tags geändert werden (Am besten eigene Funtion dafür schreiben)
-		}
-		
-		console.log(`<--Exit_Funktion: moveFileIntoUniqueFolderStructure(${note.name})`)
-	}
-
+	
 
 	private async noteFullyCreated(note: TFile, retries: number = 20, delay: number = 100): Promise<void> {
 
@@ -267,6 +246,8 @@ export default class CombinedPlugin extends Plugin {
 
 
 	private async reloadTagFolderTab() {
+		console.log(`-->Enter_Function: reloadTagFolderTab`)
+
 		await window.sleep(100);
 		let tagfolderView = this.app.workspace.getLeavesOfType("tagfolder-view");
 		for(let x of tagfolderView) {
@@ -280,29 +261,47 @@ export default class CombinedPlugin extends Plugin {
 			await window.sleep(500);
 			this.app.workspace.revealLeaf(newLeaf);
 		}
-		
+
+		console.log(`<--Exit_Function: reloadTagFolderTab`)		
 	}	
 
 
 
 	private async createNoteBasedOnTemplate(note: TFile): Promise<void> {
+		console.log(`\n-->Enter_Function: createNoteBasedOnTemplate(${note.name}: TFile)`);
+
 		
+		await window.sleep(1000);
+
 		if(note.parent) {
 
-			if(/Raphael\/Formalwissenschaften\/Mathematik\//g.test(note.parent.path)) {
+			console.log(note.parent.name)
+			if(/Raphael\§Formalwissenschaften\§Mathematik/g.test(note.parent.name)) {
 
+				
 				let mathNote: MathNote = new MathNote(this, note);
 				console.log(mathNote);
 			}
 			
 		}
 		
-		
+		console.log(`<--Exit_Function: createNoteBasedOnTemplate(${note.name}: TFile)\n `);
 
-		
+	}
+
+	private async activateView() {
+		let leaf: WorkspaceLeaf | null = null
+		const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_TAGFOLDER);
+
+		if(leaves.length > 0) leaf = leaves[0];
+		else {
+			leaf = this.app.workspace.getLeftLeaf(false);
+			await leaf?.setViewState( {type: VIEW_TYPE_TAGFOLDER, active: true})
+		}
+
 	}
 }
-/*
+
 interface CombinedPluginSettings {
 	structure1: string;
 }
@@ -312,9 +311,9 @@ const DEFAULT_SETTINGS: CombinedPluginSettings = {
 }
 
 class SampleSettingTab extends PluginSettingTab {
-	combinedPlugin: CombinedPlugin;
+	combinedPlugin: TagsPlus;
 
-	constructor(app: App, combinedPlugin: CombinedPlugin) {
+	constructor(app: App, combinedPlugin: TagsPlus) {
 		super(app, combinedPlugin);
 		this.combinedPlugin = combinedPlugin;
 	}
@@ -325,17 +324,12 @@ class SampleSettingTab extends PluginSettingTab {
 		containerEl.empty();
 
 		new Setting(containerEl)
-			.setName('Enter Structure Name')
-			.setDesc('Track Structure')
-			.addText(text => text
-				.setPlaceholder('Enter your Structure')
-				.setValue(this.combinedPlugin.combinedPluginSettings.structure1)
-				.onChange(async (value) => {
-					this.combinedPlugin.combinedPluginSettings.structure1 = value;
-					await this.combinedPlugin.saveSettings();
-				}));
+			.setName("Activate R Structure for: ")
+			.addTextArea((input) => "")
+
 	}
 }
 
 
-*/
+
+
