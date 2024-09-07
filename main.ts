@@ -1,7 +1,8 @@
-import { MathNote } from 'mathNotes/mathNoteManagement';
-import { App, WorkspaceLeaf, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, TFolder, TFile, MetadataCache, TAbstractFile } from 'obsidian';
+import { App, WorkspaceLeaf, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, TFolder, TFile, MetadataCache, TAbstractFile, EventRef } from 'obsidian';
+import { resOnCreateFile } from 'Ressourcemanagement';
+import { folderStructureCreate, folderStructureOnCreateFile, folderStructureOnDeleteFile, folderStructureOnModifyFile } from 'TagFolder';
 const path = require("path");
-import { TagFolderView, VIEW_TYPE_TAGFOLDER } from 'TagFolderView';
+import { TagScannerView, VIEW_TYPE_TAGSCANNER } from 'TagScannerView';
 
 
 export default class TagsPlus extends Plugin {
@@ -9,138 +10,108 @@ export default class TagsPlus extends Plugin {
 	
 	combinedPluginSettings: CombinedPluginSettings
 
-	lastNoteIntegratedIntoUniqueFolderStructure: boolean = false;
+	//lastNoteIntegratedIntoUniqueFolderStructure: boolean = false;
+	
 
 	async onload() {
 		
 		await this.loadSettings();
 		this.addSettingTab(new SampleSettingTab(this.app, this));
-		this.registerView(VIEW_TYPE_TAGFOLDER, (leaf) => new TagFolderView(leaf))
-		this.app.workspace.onLayoutReady(this.onLayoutReady.bind(this))
+		this.registerView(VIEW_TYPE_TAGSCANNER, (leaf) => new TagScannerView(leaf, this))
+		this.app.workspace.onLayoutReady(this.onLayoutReady.bind(this));
 		
 	}
 
 	private async onLayoutReady() {
-		console.log("-->Enter_Funktion: onLayoutReady()");
 
-		await this.createUniqueFolderStructure();
-		await this.cleanUpUniqueFolderStructure();
+		//Console Metadata
+		{
+			console.groupCollapsed(`onLayoutReady()`);
+			console.groupCollapsed(`%cTrace`, `color: #a0a0a0`);
+			console.log(`Called from: Obsidian`)
+			console.log(`When Layout is ready`)
+			console.trace();
+			console.groupEnd();
+			console.groupCollapsed(`%cDescription`, `color: #a0a0a0`);
+			console.log(``)
+			console.groupEnd();
+		}
 
 		await this.activateView();
-		
-		this.registerEvent(this.app.vault.on("delete", this.onDeleteAfterLayoutReady.bind(this)))
-		this.registerEvent(this.app.vault.on("create", this.onCreateAfterLayoutReady.bind(this)));
-		this.registerEvent(this.app.vault.on("modify", this.onModifyAfterLayoutReady.bind(this)))
 
-		
-		console.log("Now watching Events: Delete, Create, Modify");
-  
-		console.log("<--Exit_Funtion: onLayoutReady()");
-		
+		await folderStructureCreate(this);
 
-
-	}
-
-	private async onCreateAfterLayoutReady(abstractFile: TAbstractFile): Promise<void> {
-		console.log(`\n-->Enter_Function: onCreateAfterLayoutReady(${abstractFile.name}: TAbstractFile)`);
-
-		if(abstractFile instanceof TFile) {
-			let note: TFile = abstractFile;
-
-			await this.createNoteBasedOnTemplate(note);
-		}
-		else {
-			console.log(`${abstractFile.name} is a folder, so nothing to do.`);
-		}
-		
-		console.log(`<--Exit_Function: onCreateAfterLayoutReady(${abstractFile.name}: TAbstractFile)\n `)
-	}
-
-	private async onModifyAfterLayoutReady(abstractFile: TAbstractFile): Promise<void> {
-		console.log(`\n-->Enter_Function: onModifyAfterLayoutReady(${abstractFile.name}: TAbstractFile)`);
-
-		if(abstractFile instanceof TFile) {
-			console.log(`Registered Change in Note: ${abstractFile.name}, determening if file has tags:`)
-
-			let note: TFile = abstractFile;
-			let noteNewTags: string[] = [];
-
-			await this.app.vault.read(note).then(async (noteContent) => {
-
-				if(/tags:\n  -(?:\s[a-zA-Z0-9_\-])/g.test(noteContent)) {
-					console.log(`Note ${note.name} has tags, determening if files have changed`)
-
-					let buffer: any = noteContent.match(/(?<=tags:\n)((?:  - )([a-zA-Z0-9_\-\/]+)(?:\n))+(?=(---)|(\w+:)|)/g)
-					buffer = buffer[0];
-					noteNewTags = buffer.match(/(?<=  - )[a-zA-Z0-9_\-\/]+/g);		
-					
-
-					let oldUniqueFolder: any = note.parent;
-					let oldUniqueFolderName = oldUniqueFolder.name;
-					let newUniqueFolderName = this.getFolderNameFromTags(noteNewTags);
-					if(oldUniqueFolderName == newUniqueFolderName) {
-						console.log(`Tags have note changed, ${note.name} still in ${oldUniqueFolder}`);
-					}
-					else {
-						console.log(`Tags have changed for ${note.name}`);
-
-						await this.app.vault.createFolder(newUniqueFolderName)
-						.then(async (newUniqueFolder: TFolder) => {
-							console.log(`Created new Folder: ${newUniqueFolderName}`)
-						})
-						.catch(() => console.log(`Folder ${newUniqueFolderName} already exists`));	//If Folder already exists it changes nothing, so no error needs to be handled.
-						
-						await this.app.vault.rename(note, `${newUniqueFolderName}/${note.name}`)
-						.then(async () => {
-							console.log(`Moved File into ${newUniqueFolderName}`)
-						})
-						.catch(async () => console.log(`In ${newUniqueFolderName} is a note with the same name,\n
-							right now no error handling, this means ${note.name} has the new Tags ${noteNewTags} but is in ${oldUniqueFolder}.\nHandle manually!`));
-
-						if(oldUniqueFolder && oldUniqueFolder.children.length == 0) await this.app.vault.delete(oldUniqueFolder, true);	//No other notes in that folder -> delete
-
-					}
-				}
-			});
-			
-		}
-
-		console.log(`<--Exit_Function: onModifyAfterLayoutReady(${abstractFile.name}: TAbstractFile)\n `);
-	}
-
-	private async onDeleteAfterLayoutReady(abstractFile: TAbstractFile): Promise<void> {
-
-		console.log(`\n-->Enter_Funktion: onDeleteAfterLayoutReady(${abstractFile.name}: TAbstractFile)`)
-
-		if(abstractFile instanceof TFile) {
-			let note: TFile = abstractFile;
-			console.log("Trying to delete Note: " + note.name);
-			let noteParentName = path.dirname(note.path);	//Since Obsidian marked this file as deleted it has not parent.
-			
-			let noteParent = this.app.vault.getFolderByPath(noteParentName);
-			if(noteParent) {
-				console.log(`The Parent of ${note.name} was found: ${noteParentName}, checking if ${noteParentName} has other notes`)
-				
-				if(noteParent.children.length == 0) {
-					console.log(`${noteParentName} is empty without ${note.name}.`)
-					await this.app.vault.delete(noteParent, true)
-					.then(() => console.log(`${noteParentName} was succesfully deleted.`))
-					.catch((reason) => console.log(`Error trying to delete ${noteParentName}:}n${reason}`))
-				}
-				else { 
-					console.log(`${noteParentName} is not empty, therfore it was not deleted.\nnoteParent: `)
-					console.log(`${noteParent.children}`)
-				}
+		this.registerEvent(this.app.vault.on("create", (abstractFile) => {
+			if(abstractFile instanceof TFile && abstractFile.extension == "md" && !abstractFile.path.includes(`Plugin Ordner`)) {
+				folderStructureOnCreateFile();
 			}
-			else console.log(`There is no parent for ${note.name}`)		
-			await this.reloadTagFolderTab();
-		}
-		else console.log(`${abstractFile.name} is a folder, so nothing to do.`)
+			if(abstractFile instanceof TFile && abstractFile.extension != "md") {
+				resOnCreateFile(this, abstractFile)
+			}
+		}));
+		this.registerEvent(this.app.vault.on("delete", (abstractFile) => {
+			if(abstractFile instanceof TFile && abstractFile.extension == "md" && !abstractFile.path.includes(`Plugin Ordner`)) {
+				folderStructureOnDeleteFile(this, abstractFile)
+			}
+		}))
+		this.registerEvent(this.app.vault.on("modify", (abstractFile) => {
+			if(abstractFile instanceof TFile && abstractFile.extension == "md" && !abstractFile.path.includes(`Plugin Ordner`)) {
+				folderStructureOnModifyFile(this, abstractFile)
+			}	
+		}));
+
+		console.log(`Added EventListener: "create"`);
+		console.log(`Added EventListener: "delete"`);
+		console.log(`Added EventListener: "modify"`);
+
 		
-		console.log(`<--Exit_Funktion: onDeleteAfterLayoutReady(${abstractFile.name}: TAbstractFile)\n `)
+		console.groupEnd();
+	}
+
+
+	
+	
+
+	private async fake() {
+
+		let markdownFiles: TFile[] = this.app.vault.getMarkdownFiles();
+		markdownFiles.forEach(file => {
+			
+			if(file.parent && file.parent.name == "Daily Notes") {
+				
+				let fileName: string = file.basename;
+				let match = fileName.match(/(\d{2})\.(\d{2})\.(\d{2})/)
+				let date: string[] = [];
+				if(match) {
+					date[0] = match[3].replace("0", "");
+					date[1] = match[2].replace("0", "");
+					date[2] = match[1];
+				}
+
+				match = fileName.match(/\w\w\w/g);
+				let weekday: string = "";
+				if(match) {
+					weekday = match[0];
+				}
+
+				let alias = `${weekday} ${date.join(".")}`
+				new Notice(alias);
+
+				this.app.vault.read(file).then((content) => {
+					
+					
+				})
+			} 
+		});
 	}
 
 	onunload() {
+
+
+		let tagScannerViews: TagScannerView[] = this.app.workspace.getLeavesOfType(VIEW_TYPE_TAGSCANNER).filter((leaf) => leaf instanceof TagScannerView)
+		if(tagScannerViews.length > 0) {
+			tagScannerViews[0].saveScannerStructure();
+		}
 
 	}
 	
@@ -154,152 +125,77 @@ export default class TagsPlus extends Plugin {
 	
 
 
-	private async createUniqueFolderStructure(): Promise<void> {
 
-		console.log(`-->Enter_Function: createUniqueFolderStructure()`)
-
-		const notes = this.app.vault.getMarkdownFiles();
-
-		for(let note of notes) {
-
-			let noteMetaData = this.app.metadataCache.getFileCache(note);
-
-			if(noteMetaData && noteMetaData.frontmatter && noteMetaData.frontmatter["tags"]) {	//Hier braucht man nicht zu checken ob die Tags schon geladen sind.
-				let folderName: string = this.getFolderNameFromTags(noteMetaData.frontmatter["tags"]);
-
-				//Erstell den Ordner falls er noch nicht existiert und bewegt die Notiz hinein
-			 	await this.app.vault.createFolder(folderName)
-				.then(async () => await this.app.vault.rename(note, `${folderName}/${note.name}`))
-				.catch(async () => {
-
-					await this.app.vault.rename(note, `${folderName}/${note.name}`)
-					.catch(async () => {
-						//This means that there is a note with the same Name with that tag.
-						let duplicate = this.app.vault.getFileByPath(`${folderName}/${note.name}`);
-						if(duplicate) {
-							new Notice("Achtung Duplikat, wird einfach belassen.")	//Hier war ich faul MEHR ADDEN
-						}
-					});
-
-						
-				});
-			
-			}
-		}
-
-		console.log(`<--Exit_Function: createUniqueFolderStructure()`)
-
-	}
-
-	private  async cleanUpUniqueFolderStructure(): Promise<void> {
-		console.log(`-->Enter_Function: cleanUpUniqueFolderStructure()`)
-		let rootFolder = this.app.vault.getRoot();
-		let folders = rootFolder.children;
-
-		for(let folder of folders) {
-			if(folder instanceof TFolder) {
-				if(folder.children.length == 0) {
-					await this.app.vault.delete(folder, true)
-					.then(() => {
-						console.log("Succesfully deleted Folder: " + folder.name)
-					});
-				}
-			}
-		}
-		console.log(`<--Exit_Function: cleanUpUniqueFolderStructure()`)
-
-	}
-
-	
-
-	private async noteFullyCreated(note: TFile, retries: number = 20, delay: number = 100): Promise<void> {
-
-		if(retries == 0) {
-			console.log("Metadata of Note: " + note.name + " unavailable") 
-		}
-		else {
-			if(!this.app.metadataCache.getFileCache(note)) {
-				console.log("retries: " + retries)
-				await window.sleep(delay)
-				await this.noteFullyCreated(note, retries - 1);
-			}
-			else {
-				console.log(`Note ${note.name} was succefully registered with Metadata`)
-			}
-		}
-
-	}
-
-
-
-	private getFolderNameFromTags(tags: string[]): string {
-		let sortedTags: string[] = tags.sort();	//Sortieren egal wie, damit man keine Dopplung haben kann
-		let newFolderName: string = "";
-		for(let i = 0; i < sortedTags.length; i++) {	
-			if(i == 0) newFolderName += sortedTags[i];
-			else newFolderName += "_" + sortedTags[i];
-		}
-		newFolderName = newFolderName.replaceAll("/", "§");
-
-		return newFolderName;
-	}
-
-
-	private async reloadTagFolderTab() {
-		console.log(`-->Enter_Function: reloadTagFolderTab`)
-
-		await window.sleep(100);
-		let tagfolderView = this.app.workspace.getLeavesOfType("tagfolder-view");
-		for(let x of tagfolderView) {
-			x.detach();
-		}
-
-		await window.sleep(1000);
-		let newLeaf = this.app.workspace.getLeftLeaf(false);
-		if(newLeaf) {
-            newLeaf.setViewState({ type: 'tagfolder-view' });
-			await window.sleep(500);
-			this.app.workspace.revealLeaf(newLeaf);
-		}
-
-		console.log(`<--Exit_Function: reloadTagFolderTab`)		
-	}	
-
-
-
-	private async createNoteBasedOnTemplate(note: TFile): Promise<void> {
-		console.log(`\n-->Enter_Function: createNoteBasedOnTemplate(${note.name}: TFile)`);
-
-		
-		await window.sleep(1000);
-
-		if(note.parent) {
-
-			console.log(note.parent.name)
-			if(/Raphael\§Formalwissenschaften\§Mathematik/g.test(note.parent.name)) {
-
-				
-				let mathNote: MathNote = new MathNote(this, note);
-				console.log(mathNote);
-			}
-			
-		}
-		
-		console.log(`<--Exit_Function: createNoteBasedOnTemplate(${note.name}: TFile)\n `);
-
-	}
 
 	private async activateView() {
 		let leaf: WorkspaceLeaf | null = null
-		const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_TAGFOLDER);
+		const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_TAGSCANNER);
 
 		if(leaves.length > 0) leaf = leaves[0];
 		else {
 			leaf = this.app.workspace.getLeftLeaf(false);
-			await leaf?.setViewState( {type: VIEW_TYPE_TAGFOLDER, active: true})
+			await leaf?.setViewState( {type: VIEW_TYPE_TAGSCANNER, active: true})
 		}
 
 	}
+
+	public getTags(file: TFile): string[] {
+		//Console Metadata
+		{
+			console.groupCollapsed(`getTags(file: "${file.basename}")`);
+			console.groupCollapsed(`%cTrace`, `color: #a0a0a0`);
+			console.trace();
+			console.groupEnd();
+			console.groupCollapsed(`%cDescription`, `color: #a0a0a0`);
+			console.groupCollapsed(`Goal`)
+			console.log(`Getting the frontmatter and content tags of a note.`);
+			console.groupEnd();
+			console.groupCollapsed(`Process`);
+			console.log(`Get the metadata, look for frontmatter,`,
+				`Look for frontmatter tags and then for content tags.`
+			);
+			console.groupEnd();
+			console.groupEnd();
+			console.time(`getTags(file: "${file.path}")`);
+		}
+
+		let fileMetadata = this.app.metadataCache.getFileCache(file);
+		if(!fileMetadata) {
+			console.log(`%cError: No filemetadata was found!`, `color: red`)
+			console.timeLog();
+			return [];
+		}
+
+		let frontmatterTags: string[] = [];
+
+		let fileFrontmatter = fileMetadata.frontmatter;
+		if(fileFrontmatter) frontmatterTags = (fileFrontmatter["tags"])
+		
+		console.groupCollapsed(`tags in frontmatter`)
+		console.log(frontmatterTags)
+		console.groupEnd()
+
+		let contentTags: string[] = [];
+		let cashedContentTags = fileMetadata.tags;
+		if(cashedContentTags) contentTags = cashedContentTags.map(cashedTag => cashedTag.tag.replaceAll("#", ""));
+
+		console.groupCollapsed(`content tags`)
+		console.log(contentTags)
+		console.groupEnd();
+
+		let tags: string[] = frontmatterTags;
+		contentTags.forEach(contentTag => {if(!tags.contains(contentTag)) tags.push(contentTag)})
+
+		console.groupCollapsed(`tags`)
+		console.log(tags)
+		console.groupEnd();
+
+		console.timeLog(`getTags(file: "${file.path}")`);
+		console.groupEnd();
+		return tags;
+		
+	}
+
 }
 
 interface CombinedPluginSettings {

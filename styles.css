@@ -21,29 +21,21 @@
     border-bottom: none;
     border-left: none;
     
+    transition: 0.5s;
 }
 
+.arrow.Rotated {
 
-
-.containerForRenamingOrCreatingTag {
+    margin-left: 10px;
+    margin-right: 7px;
+    margin-bottom: 2px;
     
-    display: flex;
-    align-items: center;
-    border-width: 2px;
-    border-style: solid;
-    border-color: #7b5bfa;
-    border-radius: 6px;
-    height: 32px;
-    overflow: hidden;
-
-    background-color: #f6f6f6;
-    
+    transform: rotate(135deg);
 }
 
-.fakeTagExpander {
+.scannerExpanderForScanner {
 
     
-
     display: flex;
     align-items: center;
     justify-items: center;
@@ -57,9 +49,12 @@
 
 }
 
-.renamingOrCreatingTag {
+.scannerExpanderForNotes {
 
-    padding-top: 2px;
+    display: flex;
+    align-items: center;
+
+    padding-top: 0px;
     padding-left: 5px;
     height: 100%;
     flex-grow: 1;
@@ -67,12 +62,53 @@
 
     border-radius: 6px;
     border-style: hidden;
+    border-color: #cacaca;
 
 }
 
 
+.scannerHeader {
+    
+    display: flex;
+    align-items: center;
+    border-width: 2px;
+    border-style: solid;
+    border-color: #f6f6f6;
+    border-radius: 6px;
+    height: 32px;
 
-.containerForTag {
+    overflow: hidden;
+    background-color: #f6f6f6;
+    
+}
+
+
+.scannerChildren {
+
+    margin-left: 15px;
+    border-left-width: 1px;
+    border-left-color: #cacaca;
+    border-left-style: hidden;
+}
+
+
+.scannerChildrenScanner {
+
+    padding-left: 0px;
+
+}
+
+.scannerChildrenNotes {
+
+    margin-left: 13px;
+    padding-left: 14px;
+    border-left-style: dashed;
+    border-left-color: #cacaca;
+    border-left-width: 1px;
+
+}
+
+.noteContainer {
 
     display: flex;
     align-items: center;
@@ -81,27 +117,19 @@
     border-color: #f6f6f6;
     border-radius: 6px;
     height: 32px;
+
+    background-color: #f6f6f6;
     overflow: hidden;
+    
+}
 
-    background-color: #f6f6f6;
+.noteContainer.renaming {
+
+    border-color: #7b5bfa;
 
 }
 
-.tagExpander {
-  
-    display: flex;
-    align-items: center;
-    justify-items: center;
-    flex-shrink: 0;
-    width: 25px;
-    height: 100%;
-    background-color: #f6f6f6;
-
-    border-style: hidden;
-    border-radius: 6px;
-}
-
-.noteExpander {
+.note {
 
     display: flex;
     align-items: center;
@@ -117,11 +145,16 @@
 
 }
 
+.inputField {
 
+    flex-grow: 1;
 
+    border-width: 2px;
+    border-style: hidden;
+    border-color: #f6f6f6;
+    border-radius: 6px;
+    height: 32px;
 
-.highlight {
-    background-color: #e4e4e4;
+    background-color: #f6f6f6;
     
 }
-
