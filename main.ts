@@ -1,7 +1,9 @@
+import { structureOnDeleteFile, structureOnModifyFile, structureOnRenameFile } from 'BackendEventManager';
+import { addCommands } from 'CustomCommands';
 import { App, WorkspaceLeaf, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, TFolder, TFile, MetadataCache, TAbstractFile, EventRef } from 'obsidian';
 import { resOnCreateFile } from 'Ressourcemanagement';
-import { folderStructureCreate, folderStructureOnCreateFile, folderStructureOnDeleteFile, folderStructureOnModifyFile } from 'TagFolder';
-const path = require("path");
+import { FileMetadataExtension, loadFileMetadata, loadSyncTemplateMetadata, SyncTemplateMetadataExtension, syncTemplateStructureOnCreate, setStatusBar, syncTemplateStructureOnModify } from 'SyncTemplateManager';
+import { folderStructureCreate, folderStructureOnCreateFile, folderStructureOnDeleteFile, folderStructureOnModifyFile } from 'TagFolderManager';
 import { TagScannerView, VIEW_TYPE_TAGSCANNER } from 'TagScannerView';
 
 
@@ -9,24 +11,46 @@ export default class TagsPlus extends Plugin {
 
 	
 	combinedPluginSettings: CombinedPluginSettings
+	syncTemplateMetadataList: Map<string, SyncTemplateMetadataExtension> = new Map();
+	fileMetadataList: Map<string, FileMetadataExtension> = new Map();
+	statusBarItemSyncTemplateActive: HTMLElement;
 
+	hashToFolderNameMap: Map<string, string> = new Map();
 	//lastNoteIntegratedIntoUniqueFolderStructure: boolean = false;
 	
+	ignoreAllModifies: boolean = false;
+	ignoreNextModify: boolean = false;
+	ignoreNextRename: boolean = false;
 
 	async onload() {
-		
-		await this.loadSettings();
-		this.addSettingTab(new SampleSettingTab(this.app, this));
+		//Console Metadata
+		{
+			console.groupCollapsed(`onload() \n>> main`);
+			console.groupCollapsed(`%cTrace`, `color: #a0a0a0`);
+			console.log(`Called from: Obsidian`)
+			console.log(`When Plugin gets loaded`)
+			console.trace();
+			console.groupEnd();
+			console.groupCollapsed(`%cDescription`, `color: #a0a0a0`);
+			console.log(`Init Plugin`)
+			console.groupEnd();
+		}
+
+		addCommands(this)
+
+		//await this.loadSettings();
+		//this.addSettingTab(new SampleSettingTab(this.app, this));
 		this.registerView(VIEW_TYPE_TAGSCANNER, (leaf) => new TagScannerView(leaf, this))
 		this.app.workspace.onLayoutReady(this.onLayoutReady.bind(this));
 		
+		console.groupEnd();
 	}
 
 	private async onLayoutReady() {
 
 		//Console Metadata
 		{
-			console.groupCollapsed(`onLayoutReady()`);
+			console.groupCollapsed(`onLayoutReady() >>\nTagsPlus: main`);
 			console.groupCollapsed(`%cTrace`, `color: #a0a0a0`);
 			console.log(`Called from: Obsidian`)
 			console.log(`When Layout is ready`)
@@ -41,29 +65,45 @@ export default class TagsPlus extends Plugin {
 
 		await folderStructureCreate(this);
 
+		loadSyncTemplateMetadata(this)
+		loadFileMetadata(this)
+
+
+		this.statusBarItemSyncTemplateActive = this.addStatusBarItem()
+		setStatusBar(this, this.app.workspace.getActiveFile())
+		this.registerEvent(this.app.workspace.on("file-open", (file) => setStatusBar(this, file)))
+
 		this.registerEvent(this.app.vault.on("create", (abstractFile) => {
 			if(abstractFile instanceof TFile && abstractFile.extension == "md" && !abstractFile.path.includes(`Plugin Ordner`)) {
-				folderStructureOnCreateFile();
+				folderStructureOnCreateFile(this, abstractFile);
+				syncTemplateStructureOnCreate(this, abstractFile)
 			}
 			if(abstractFile instanceof TFile && abstractFile.extension != "md") {
-				resOnCreateFile(this, abstractFile)
+				//resOnCreateFile(this, abstractFile)
 			}
 		}));
 		this.registerEvent(this.app.vault.on("delete", (abstractFile) => {
-			if(abstractFile instanceof TFile && abstractFile.extension == "md" && !abstractFile.path.includes(`Plugin Ordner`)) {
-				folderStructureOnDeleteFile(this, abstractFile)
+			if(abstractFile instanceof TFile && abstractFile.extension == "md" && !abstractFile.path.includes(`Plugin Ordner`)) {		
+				structureOnDeleteFile(this, abstractFile)
 			}
 		}))
 		this.registerEvent(this.app.vault.on("modify", (abstractFile) => {
 			if(abstractFile instanceof TFile && abstractFile.extension == "md" && !abstractFile.path.includes(`Plugin Ordner`)) {
-				folderStructureOnModifyFile(this, abstractFile)
+				structureOnModifyFile(this, abstractFile)
 			}	
+		}));
+		this.registerEvent(this.app.vault.on('rename', (abstractFile, oldPath) => {
+			if(abstractFile instanceof TFile && abstractFile.extension == "md" && !abstractFile.path.includes(`Plugin Ordner`)) {
+				structureOnRenameFile(this, abstractFile, oldPath);
+			}
 		}));
 
 		console.log(`Added EventListener: "create"`);
 		console.log(`Added EventListener: "delete"`);
 		console.log(`Added EventListener: "modify"`);
 
+		
+		
 		
 		console.groupEnd();
 	}
@@ -72,38 +112,7 @@ export default class TagsPlus extends Plugin {
 	
 	
 
-	private async fake() {
 
-		let markdownFiles: TFile[] = this.app.vault.getMarkdownFiles();
-		markdownFiles.forEach(file => {
-			
-			if(file.parent && file.parent.name == "Daily Notes") {
-				
-				let fileName: string = file.basename;
-				let match = fileName.match(/(\d{2})\.(\d{2})\.(\d{2})/)
-				let date: string[] = [];
-				if(match) {
-					date[0] = match[3].replace("0", "");
-					date[1] = match[2].replace("0", "");
-					date[2] = match[1];
-				}
-
-				match = fileName.match(/\w\w\w/g);
-				let weekday: string = "";
-				if(match) {
-					weekday = match[0];
-				}
-
-				let alias = `${weekday} ${date.join(".")}`
-				new Notice(alias);
-
-				this.app.vault.read(file).then((content) => {
-					
-					
-				})
-			} 
-		});
-	}
 
 	onunload() {
 
@@ -139,62 +148,7 @@ export default class TagsPlus extends Plugin {
 
 	}
 
-	public getTags(file: TFile): string[] {
-		//Console Metadata
-		{
-			console.groupCollapsed(`getTags(file: "${file.basename}")`);
-			console.groupCollapsed(`%cTrace`, `color: #a0a0a0`);
-			console.trace();
-			console.groupEnd();
-			console.groupCollapsed(`%cDescription`, `color: #a0a0a0`);
-			console.groupCollapsed(`Goal`)
-			console.log(`Getting the frontmatter and content tags of a note.`);
-			console.groupEnd();
-			console.groupCollapsed(`Process`);
-			console.log(`Get the metadata, look for frontmatter,`,
-				`Look for frontmatter tags and then for content tags.`
-			);
-			console.groupEnd();
-			console.groupEnd();
-			console.time(`getTags(file: "${file.path}")`);
-		}
 
-		let fileMetadata = this.app.metadataCache.getFileCache(file);
-		if(!fileMetadata) {
-			console.log(`%cError: No filemetadata was found!`, `color: red`)
-			console.timeLog();
-			return [];
-		}
-
-		let frontmatterTags: string[] = [];
-
-		let fileFrontmatter = fileMetadata.frontmatter;
-		if(fileFrontmatter) frontmatterTags = (fileFrontmatter["tags"])
-		
-		console.groupCollapsed(`tags in frontmatter`)
-		console.log(frontmatterTags)
-		console.groupEnd()
-
-		let contentTags: string[] = [];
-		let cashedContentTags = fileMetadata.tags;
-		if(cashedContentTags) contentTags = cashedContentTags.map(cashedTag => cashedTag.tag.replaceAll("#", ""));
-
-		console.groupCollapsed(`content tags`)
-		console.log(contentTags)
-		console.groupEnd();
-
-		let tags: string[] = frontmatterTags;
-		contentTags.forEach(contentTag => {if(!tags.contains(contentTag)) tags.push(contentTag)})
-
-		console.groupCollapsed(`tags`)
-		console.log(tags)
-		console.groupEnd();
-
-		console.timeLog(`getTags(file: "${file.path}")`);
-		console.groupEnd();
-		return tags;
-		
-	}
 
 }
 

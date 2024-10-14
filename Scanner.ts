@@ -1,15 +1,18 @@
 import { NoteElement } from "NoteElement";
 import { addHoverHighlightTo, addRenamingHighlightTo, createEmptyHeader, createInputField, removeHighlightFrom, removeRenamingHighlightFrom, TagScannerView, TAGVALUE_FORMAT, testSubtag, VIEW_TYPE_TAGSCANNER } from "TagScannerView";
-import { Menu, Notice, Plugin, TFile } from "obsidian";
+import { Menu, Notice, Plugin, TFile, TFolder } from "obsidian";
 
 import * as fs from "fs";
 import TagsPlus from "main";
+import { getSyncTemplate, FileMetadataExtension, SyncTemplateMetadataExtension } from "SyncTemplateManager";
+import { getTagsThroughContent, getTagsThroughMetadata } from "TagFolderManager";
+import { createHash } from "crypto";
 
 
 export class Scanner {
 
     //Tree Structure
-    plugin: Plugin;
+    plugin: TagsPlus;
     parent: Scanner | HTMLElement;
     children: Scanner[] = [];
     childrenNotes: NoteElement[] = [];
@@ -42,14 +45,19 @@ export class Scanner {
 
 
     
-    constructor(plugin: Plugin, parent: Scanner | HTMLElement, relPosition: number, tagName: string, children: CompressedScanner[], scannerName?: string) {
+    constructor(plugin: TagsPlus, parent: Scanner | HTMLElement, relPosition: number, tagValue: string, children: CompressedScanner[], scannerName?: string) {
         //Console Metadata
         {
             let parentString: string = "";
             if(parent instanceof Scanner) parentString = parent.tagValue;
             else parentString = "No Parent"
 
-            console.groupCollapsed(`new Scanner(parent: ${parentString},\nrelPosition: ${relPosition},\ntagName: ${tagName},\nchildren: [${children.map((child) => child.tagName).join(", ")}])`);
+            console.groupCollapsed(`new Scanner(parent: ${parentString}, relPosition: ${relPosition},\ntagName: ${tagValue}, children: ..., scannerName?: "${scannerName}")`);
+            console.groupCollapsed(`...`)
+            console.groupCollapsed(`children`)
+            console.log(children)
+            console.groupEnd()
+            console.groupEnd();
             console.groupCollapsed(`%cTrace`, `color: #a0a0a0`);
             if(parent instanceof Scanner) console.log(`Called From ${parent.scannerName}`);
             else console.log(`Called From: Root(Tag Scanner Tab)`);
@@ -71,17 +79,19 @@ export class Scanner {
         
         //Loading Name
         {
+            console.groupCollapsed(`Loading Name`)
             this.plugin = plugin;
             this.parent = parent;
             this.relPosition = relPosition;
 
             if(scannerName) {
                 this.scannerName = scannerName;
-                this.setName(tagName, false);
+                this.setName(tagValue, false);
             }
-            else this.setName(tagName, true)
+            else this.setName(tagValue, true)
 
             this.setSearchTags();
+            console.groupEnd();
         }
         
         //Loading HTML
@@ -135,6 +145,7 @@ export class Scanner {
             console.groupEnd();
         }
         
+        
 
         //Activating the Scanner
         {
@@ -151,7 +162,7 @@ export class Scanner {
             this.expanderForScannerEl.addEventListener("click", () => {
                 //Console Metadata
                 {
-                    console.groupCollapsed(`Registered Event: "click"`);
+                    console.groupCollapsed(`Registered Event: "click"\n>> TagsPlus: TagScanner-UI`);
                     console.groupCollapsed(`%cTrace`, `color: #a0a0a0`);
                     console.log(`Registered on: scanner-expander of "${this.scannerName}"`)
                     console.trace();
@@ -184,16 +195,19 @@ export class Scanner {
             this.expanderForNotesEl.addEventListener("click", () => {
                  //Console Metadata
                 {
-                    console.groupCollapsed(`Registered Event: "click"`);
+                    console.groupCollapsed(`Registered Event: "click"\n>> TagsPlus: TagScanner-UI`);
+                    console.groupCollapsed(`...`)
+                    console.groupCollapsed(`this.searchTags`)
+                    console.log(this.searchTags)
+                    console.groupEnd()
+                    console.groupEnd();
                     console.groupCollapsed(`%cTrace`, `color: #a0a0a0`);
                     console.log(`Registered on: note-expander of "${this.scannerName}"`)
                     console.trace();
                     console.groupEnd();
                     console.groupCollapsed(`%cDescription`, `color: #a0a0a0`);
                     console.groupCollapsed(`Goal`)
-                    console.log(`Toggling the notes with the tags:`,
-                        `\n["${this.searchTags.join(`", "`)}"]`
-                    );
+                    console.log(`Toggling the notes with the tags`);
                     console.groupEnd();
                     console.groupCollapsed(`Process`);
                     console.log(`Check whether to close or search,`,
@@ -209,8 +223,8 @@ export class Scanner {
                     console.log(`Children Notes are closed, searching for Notes`);
 
                     this.expanderForNotesEl.style.borderStyle = "solid"
-                    let renderNotes: TFile[] = this.searchChildrenNotes();    //Close 1 console group when done
-                    renderNotes.forEach(renderNote => new NoteElement(renderNote, this, this.plugin));
+                    let renderNotes: TFile[] = this.searchChildrenNotes();    
+                    renderNotes.forEach(renderNote => new NoteElement(this.plugin, renderNote, this));
 
                     this.childrenNotesExpanded = true;
                     console.groupEnd();
@@ -219,6 +233,7 @@ export class Scanner {
                 else {
                     console.log(`Children Notes are expanded`);
                     this.closeChildrenNotes();
+                    this.childrenNotesExpanded = false;
                     console.groupEnd();
                 }
             })
@@ -238,7 +253,7 @@ export class Scanner {
                     item.onClick((ev) => {
                         //Console Metadata
                         {
-                            console.groupCollapsed(`Registered Event: "Create Scanner"`);
+                            console.groupCollapsed(`Registered Event: "Create Scanner"\n>> TagsPlus: TagScanner-UI`);
                             console.groupCollapsed(`%cTrace`, `color: #a0a0a0`);
                             console.log(`Registered on: "${this.scannerName}"`)
                             console.trace();
@@ -249,9 +264,8 @@ export class Scanner {
                             console.groupEnd();
                             console.groupCollapsed(`Process`);
                             console.log(`Opening the children, if not already opened.`,
-                                `\nGetting the user input with an Input Field`, 
-                                `\nonce given, create Scanner with no children and "${this.scannerName}" as parent.`,
-                                `\nSaving.`
+                                `\nGetting the user input with an Input Field`,
+                                `\ncall the tagValueInputHandler.`
                             );
                             console.groupEnd();
                             console.groupEnd();
@@ -261,20 +275,36 @@ export class Scanner {
                         if(!this.childrenScannerExpanded) this.expandChildrenScanner();
 
                         const container = createEmptyHeader(this.childrenScannerEl);
-                        const inputField = createInputField(container, undefined, TAGVALUE_FORMAT, () => {
-
-                            const tagName = inputField.value;
-                            console.log(`...User Input: tagName = ${tagName}`);
+                        const inputField = createInputField(container, undefined, TAGVALUE_FORMAT, true, () => {
+                            //Console Metadata
+                            {
+                                console.groupCollapsed(`%cRegistered Event: "Create Scanner":`, `color: orange`,`tagValueInputHandler(tagValueInput: "${inputField.value})\n>> TagsPlus: TagScanner-UI`)
+                                console.groupCollapsed(`%cTrace`, `color: #a0a0a0`);
+                                console.trace();
+                                console.groupEnd();
+                                console.groupCollapsed(`%cDescription`, `color: #a0a0a0`);
+                                console.groupCollapsed(`Goal`)
+                                console.log(`Using the inputValue to create a new Scanner`); 
+                                console.groupEnd();
+                                console.groupCollapsed(`Process`);
+                                console.log(`Removing the container of the InputField, so the Scanner has room.`,
+                                    `\nCalling the constructor and registering the new Scanner as a child.`,
+                                    `\nThen call saveScannerStructure`
+                                );
+                                console.groupEnd();
+                                console.groupEnd();
+                            }
+                            
                             container.remove();
 
-                            this.children.push(new Scanner(this.plugin, this, this.children.length, tagName, []));
+                            this.children.push(new Scanner(this.plugin, this, this.children.length, inputField.value, []));
                             this.accessTagScannerView(view => view.saveScannerStructure())
 
                             console.groupEnd();
                         })
 
-                        console.log(`Waiting for UserInput (tag name)...`);
-                        
+                        console.log(`%cWaiting for: inputField.value...`, `color: orange`);
+                        console.groupEnd();
                     })
                 })
                 
@@ -285,49 +315,301 @@ export class Scanner {
                     item.onClick(async () => {
                         //Console Metadata
                         {
-                            console.groupCollapsed(`Registered Event: "Create Note"`);
+                            console.groupCollapsed(`Registered Event: "Create Note"\n>> TagsPlus: TagScanner-UI`);
+                            console.groupCollapsed(`...`)
+                            console.groupCollapsed(`this.searchTags`)
+                            this.searchTags.forEach((value, index) => console.log(`${index}: "${value}"`))
+                            console.groupEnd();
+                            console.groupEnd()
                             console.groupCollapsed(`%cTrace`, `color: #a0a0a0`);
                             console.log(`Registered on: "${this.scannerName}"`)
                             console.trace();
                             console.groupEnd();
                             console.groupCollapsed(`%cDescription`, `color: #a0a0a0`);
                             console.groupCollapsed(`Goal`)
-                            console.log(`Creating a new Note with tags:`, 
-                                `\n["${this.searchTags.join(`", "`)}"]`
+                            console.log(`Creating a new Note with tags and the associated Template:`, 
                             );
                             console.groupEnd();
                             console.groupCollapsed(`Process`);
-                            console.log(`Searching for Notes, if not already found.`,
+                            console.log(`Searching for Notes, if not already open.`,
                                 `\nGetting the user input with an Input Field`,
-                                `\nonce given, create yaml frontmatter from:`,
+                                `\nonce given, search for a Template that has a subset of:`,
                                 `\n["${this.searchTags.join(`", "`)}"]`,
-                                `\nCreate Markdown with no yaml frontmatter as content.`,
+                                `\nCreate a Note based of that Template`,
                                 `\nCreate Note Element with the markdown file as note-link.`
                             );
                             console.groupEnd();
                             console.groupEnd();
                         }
 
-                        if(!this.childrenNotesExpanded) this.searchChildrenNotes();    //Dont end group 
+                        if(!this.childrenNotesExpanded){
+                            this.childrenNotesExpanded = true;
+                            this.searchChildrenNotes(); 
+                        } 
+
+                        //Preparation
+                        let syncTemplate: TFile | null;
+                        let syncTemplateMetadata: SyncTemplateMetadataExtension | undefined 
+                        {
+                            console.groupCollapsed(`Preparation`)
+                            syncTemplate = getSyncTemplate(this.plugin, this.searchTags);
+                            if(!syncTemplate) {
+                                //Warning Log
+                                {
+                                    console.groupCollapsed(`%cWarning: syncTemplate not found, for details look inside the log of getSyncTemplate`, `color: red`);
+                                    console.group(`Fix`)
+                                    console.log()
+                                    console.groupEnd();
+                                    console.group(`Consequence`)
+                                    console.log()
+                                    console.groupEnd();
+                                    console.groupEnd()
+                                    console.groupEnd();
+                                    console.warn(`Error in: "Registered Event: "Create Note"\n>> TagsPlus: TagScanner-UI"`)
+                                }
+                                return
+                            }
+    
+                            syncTemplateMetadata = plugin.syncTemplateMetadataList.get(syncTemplate.path)
+                            if(!syncTemplateMetadata) {
+                                //Warning Log
+                                {
+                                    console.groupCollapsed(`%cWarning: couldnt retrieve Metadata from List for "${syncTemplate.basename}"`, `color: red`);
+                                    console.group(`Fix`)
+                                    console.log()
+                                    console.groupEnd();
+                                    console.group(`Consequence`)
+                                    console.log()
+                                    console.groupEnd();
+                                    console.groupEnd()
+                                    console.groupEnd();
+                                    console.warn(`Error in: "Registered Event: "Create Note"\n>> TagsPlus: TagScanner-UI"`)
+                                }
+                                return
+                            }
+
+                            console.log(`%cNo errors`, `color: green`)
+                            console.groupEnd()
+                        }
+
+                        new Notice(`Test 1:${this.searchTags.join(`,`)}`)
+
+                        //Matching boundTagsFromSyncTemplate to searchTags
+                        let freieKategorien: string[] = []; //This gets reduced
+                        let gebundeneKategorien: Map<string, string> = new Map()
+                        {
+                            console.groupCollapsed(`Matching boundTagsFromSyncTemplate to searchTags`)
+                            syncTemplateMetadata.nameToTagBoundConfigMap.forEach((value, key) => {  //Value beeing the start of the tag
+                                console.groupCollapsed(`${key} => ${value}`)
+                                
+                                let fittingTag: string | null = null;
+                                console.groupCollapsed(`Cycling through freieKategorien`)
+                                this.searchTags.forEach(tag => {
+                                    console.groupCollapsed(`freieKategorie = "${tag}"`)
+
+                                    if(`#${tag}`.contains(value)) {
+                                        console.log(`%c${tag} is bound to "${key}"`, `color: green`)
+                                        gebundeneKategorien.set(key, tag)
+                                        fittingTag = tag;
+                                        console.groupEnd();
+                                        return;
+                                    }
+                                    else {
+                                        console.log(`%ctag did not match the value of the map`)
+                                        freieKategorien.push(tag)
+                                    }
+
+                                    console.groupEnd();
+                                })
+                                console.groupEnd()
+
+                                if(fittingTag) {
+                                    console.log(`%cA Tag was found for the bound Kategorie`, `color: green`)
+                                    console.log(`${key} => "${fittingTag}"`)
+                                }
+                                else {
+                                    console.log(`%cNo Tag found for boundTag`, `color: red`)
+                                }
+
+                                console.groupEnd();
+                            })
+                            console.groupEnd();
+                        }
+
+                        new Notice(`Test 2:${this.searchTags.join(`,`)}`)
+
+                        console.groupCollapsed(`freieKategorien`)
+                        freieKategorien.forEach((value, index) => console.log(`${index}: "${value}`))
+                        console.groupEnd()
+                        console.groupCollapsed(`gebundeneKategorien`)
+                        console.log(gebundeneKategorien)
+                        console.groupEnd()
+
+                        /*Sorting scanner searchTags
+                        let syncTemplateTags: string[] = syncTemplate.basename.replaceAll(`§`, `/`).split(`_`);
+                        let freieKategorien: string[] = [];
+                        let gebundeneKategorien: Map<string, string> = new Map();
+                        {
+                            console.groupCollapsed(`Sorting scanner searchTags`)
+
+                            let relevantTemplateTags = syncTemplateTags;
+                            console.groupCollapsed(`relevantTemplateTags`)
+                            relevantTemplateTags.forEach((value, index) => console.log(`${index}: "${value}"`));
+                            console.groupEnd();
+
+                            console.groupCollapsed(`Sorting Process`)
+                            this.searchTags.forEach(searchTag => {
+                                console.groupCollapsed(`searchTag = "${searchTag}"`);
+                                let istFreieKategorie = true;
+                                relevantTemplateTags.forEach(templateTag => {
+                                    if(searchTag.contains(templateTag)) {
+                                        console.log(`%c"${searchTag}" is an extension of "${templateTag}"`, `color: blue`)
+                                        gebundeneKategorien.set(templateTag, searchTag);
+                                        relevantTemplateTags.remove(templateTag)
+                                        istFreieKategorie = false;
+                                        return;
+                                    }
+                                    else {
+                                        console.log(`${searchTag}" is not an extension of "${templateTag}"`)
+                                    }
+                                })
+
+                                if(istFreieKategorie) {
+                                    console.log(`Not an extension of any template tag => freie Kategorie`)
+                                    freieKategorien.push(searchTag);
+                                }
+                                else {
+                                    console.log(`Is an extension, should already be set as a value in gebundeKategorien Map`)
+                                    console.groupCollapsed(`current gebundenKategorien`)
+                                    gebundeneKategorien.forEach((value, key) => console.log(`"${key}" => "${value}"`))
+                                    console.groupEnd();
+                                }
+                                console.groupEnd()
+                            })
+                            console.groupEnd();
+
+                            console.groupCollapsed(`gebundeneKategorien`)
+                            gebundeneKategorien.forEach((value, key) => console.log(`"${key}" => "${value}"`))
+                            console.groupEnd();
+
+                            console.groupCollapsed(`freieKategorien`)
+                            freieKategorien.forEach((value, index) => console.log(`${index}: "${value}"`));
+                            console.groupEnd();
+
+                            console.groupEnd();
+                        }
+                        */
+                        //Getting freieKategorienString
+
+
+                        let freieKategorienString: string = "";
+                        {
+                            console.groupCollapsed(`Getting freieKategorienString`)
+                            if(freieKategorien.length > 0) freieKategorienString = `    - #${freieKategorien.join(`\n    - #`)}`
+                            console.groupEnd()
+                        }
+                        console.groupCollapsed(`freieKategorienString`)
+                        console.log(freieKategorienString)
+                        console.groupEnd();
+
                         
+                    
+                        let syncTemplateNoteContent: string = syncTemplateMetadata.noteContentForCreation;
+                        console.groupCollapsed(`syncTemplateNoteContent`)
+                        console.log(syncTemplateNoteContent)
+                        console.groupEnd();
+
+                        //Updating each contentVariable in the noteContent
+                        let processedNoteContent = syncTemplateNoteContent;
+                        {
+                            console.groupCollapsed(`Updating each contentVariable in the noteContent`)
+
+                            
+                            syncTemplateMetadata.contentVariables.forEach(contentVariable => {
+                                console.groupCollapsed(`contentVariable = "${contentVariable}"`)
+
+                                if(contentVariable == "notizName") {
+                                    console.log(`notizName gets handled once input is given`)
+                                }
+                                else if(contentVariable == "freieKategorien") {
+                                    processedNoteContent = processedNoteContent.replaceAll(`((freieKategorien))`, freieKategorienString)
+                                }
+                                else {
+                                    let replacerTagString = gebundeneKategorien.get(contentVariable)
+                                    let replacerDefaultString = syncTemplateMetadata.nameToDefaultConfigMap.get(contentVariable)
+                                    if(replacerTagString) {
+                                        console.log(`a tag was bound to this content variable`)
+                                        console.log(`tag = "${replacerTagString}"`)
+                                        processedNoteContent = processedNoteContent.replaceAll(`<{${contentVariable}}>`, `#${replacerTagString}`)
+                                    }
+                                    else if(replacerDefaultString) {
+                                        console.log(`a default value was set to this content variable`)
+                                        console.log(`default = "${replacerDefaultString}"`)
+                                        processedNoteContent = processedNoteContent.replaceAll(`<{${contentVariable}}>`, `${replacerDefaultString}`)
+                                    }
+                                    else {
+                                        console.log(`no special handling, just set empty`)
+                                        processedNoteContent = processedNoteContent.replaceAll(`<{${contentVariable}}>`, "")
+                                    }
+                                }
+
+                                console.groupEnd();
+                            })
+
+                            console.groupEnd();
+                        }
+
+                        console.groupCollapsed(`processedNoteContent`)
+                        console.log(processedNoteContent)
+                        console.groupEnd();
+       
+
                         const container = this.childrenNotesEl.createDiv({cls: "noteContainer"});
                         const innerContainer = container.createSpan({cls: "note"});
-                        const inputField = createInputField(container, undefined, undefined, async () => {
-                            const noteName = inputField.value;  
+                        const inputField = createInputField(container, syncTemplateMetadata.notizNameDefault , syncTemplateMetadata.nameToRegExConfigMap.get("notizNameRegExConfig"), syncTemplateMetadata.selectNotizNameDefault, async () => {
+                            const title = inputField.value;  
                             container.remove();
 
-                            let yaml = "---\ntags:\n  - " + this.searchTags.join("\n  - ") + "\n---";
-                            console.group(`Yaml frontmatter`);
-                            console.log(yaml);
-                            console.groupEnd();
-                            
-                            const note = await this.plugin.app.vault.create(`${noteName}.md`, yaml);
-                            new NoteElement(note, this, this.plugin);
+                            processedNoteContent = processedNoteContent.replaceAll(`((notizName))`, `${title}`)
 
+                            console.groupCollapsed(`final content version`)
+                            console.log(processedNoteContent)
+                            console.groupEnd();
+
+                            plugin.fileMetadataList.set(`${title}.md`, new FileMetadataExtension(plugin, processedNoteContent, syncTemplate, title))
+
+                            const note = await this.plugin.app.vault.create(`${title}.md`, processedNoteContent);;
+                            new NoteElement(this.plugin, note, this);
+
+
+                            console.groupEnd();
                             console.groupEnd();
 
                         })
-                        console.log(`Waiting for User Input...`)
+                        console.log(`%cWaiting for User Input...`, `color: orange`)
+                    
+                        
+                    })
+                })
+
+                menu.addItem((item) => {
+                    item.setTitle(`Test`)
+                    item.setIcon("test")
+                    item.onClick(() => {
+                        console.groupCollapsed(`%cTEST EVENT`, `color: purple`)
+                        
+                        const container = this.childrenNotesEl.createDiv({cls: "noteContainer"});
+                        const innerContainer = container.createSpan({cls: "note"});
+                        const inputField = createInputField(container, undefined, undefined, true, async () => {
+                            const title = inputField.value;  
+                            container.remove();
+
+                            let hash = createHash("MD5").update(title).digest("hex")
+                            new Notice(hash)
+                            console.groupEnd();
+                            console.groupEnd();
+
+                        })
                     })
                 })
 
@@ -340,7 +622,7 @@ export class Scanner {
                     item.onClick(() => {
                         //Console Metadata
                         {
-                            console.groupCollapsed(`Registered Event: "Rename Scanner"`);
+                            console.groupCollapsed(`Registered Event: "Rename Scanner"\n>> TagsPlus: TagScanner-UI`);
                             console.groupCollapsed(`%cTrace`, `color: #a0a0a0`);
                             console.log(`Registered on: Scanner "${this.scannerName}"`)
                             console.trace();
@@ -362,7 +644,7 @@ export class Scanner {
 
                         addRenamingHighlightTo(this.headerEl);
                         this.expanderForNotesEl.hide();
-                        const inputField = createInputField(this.headerEl, this.scannerName, undefined, () => {
+                        const inputField = createInputField(this.headerEl, this.scannerName, undefined, true,() => {
                             
                             this.scannerName = inputField.value
                             
@@ -385,7 +667,7 @@ export class Scanner {
                     item.onClick(() => {
                         //Console Metadata
                         {
-                            console.groupCollapsed(`Registered Event: "Change search value"`);
+                            console.groupCollapsed(`Registered Event: "Change search value"\n>> TagsPlus: TagScanner-UI`);
                             console.groupCollapsed(`%cTrace`, `color: #a0a0a0`);
                             console.log(`Registered on: Scanner "${this.scannerName}"`)
                             console.trace();
@@ -406,7 +688,7 @@ export class Scanner {
                         }
 
                         this.expanderForNotesEl.hide();
-                        const inputField = createInputField(this.headerEl, this.tagValue, TAGVALUE_FORMAT, () => {
+                        const inputField = createInputField(this.headerEl, this.tagValue, TAGVALUE_FORMAT, true, () => {
                             
 
                             this.setName(inputField.value, true);
@@ -434,7 +716,7 @@ export class Scanner {
                     item.onClick(() => {
                         //Console Metadata
                         {
-                            console.groupCollapsed(`Registered Event: "Delete"`);
+                            console.groupCollapsed(`Registered Event: "Delete"\n>> TagsPlus: TagScanner-UI`);
                             console.groupCollapsed(`%cTrace`, `color: #a0a0a0`);
                             console.log(`Registered on: Scanner "${this.scannerName}"`)
                             console.trace();
@@ -654,10 +936,10 @@ export class Scanner {
             console.time(`searchChildrenNotes()`)
         }
 
-        let relevantFiles: TFile[] = this.plugin.app.vault.getMarkdownFiles();
+        let relevantFiles: TFile[] = this.plugin.app.vault.getMarkdownFiles().filter((file) => !file.path.contains(`Plugin Ordner`));
         let fileTagMap: Map<string, string[]> = new Map();
         console.groupCollapsed(`Creating fileTagMap`)
-        relevantFiles.forEach(relevantFile => fileTagMap.set(relevantFile.path, (this.plugin as TagsPlus).getTags(relevantFile)));
+        relevantFiles.forEach(relevantFile => fileTagMap.set(relevantFile.path, getTagsThroughMetadata(this.plugin, relevantFile)));
         console.groupEnd();
 
         console.groupCollapsed(`Getting relevantFiles`)
@@ -672,13 +954,13 @@ export class Scanner {
     
                 relevantFiles.forEach(relevantFile => {
                     console.log(`relevantFile.basename = "${relevantFile.basename}"`)
-                    let fileTags = fileTagMap.get(relevantFile.path)
+                    let fileTags = fileTagMap.get(relevantFile.path) as string[]
                     console.groupCollapsed(`tags of "${relevantFile.basename}"`)
-                    fileTags?.forEach((tag, index) => console.log(`${index}: "${tag}"`));
+                    fileTags.forEach((tag, index) => console.log(`${index}: "${tag}"`));
                     console.groupEnd();
                     let fileHasTag: boolean = false;
                     console.groupCollapsed(`Testing each tag, contains: "${searchTag}"?`)
-                    fileTags?.forEach(tag => {
+                    fileTags.forEach(tag => {
                         if(tag.contains(searchTag)) {
                             fileHasTag = true;
                             console.log(`"${tag}".contains("${searchTag}") = true`)
@@ -720,11 +1002,24 @@ export class Scanner {
     
                 relevantFiles.forEach(relevantFile => {
                     console.log(`relevantFile.basename = "${relevantFile.basename}"`)
-                    let fileTags = fileTagMap.get(relevantFile.path)
+                    let fileTags = fileTagMap.get(relevantFile.path) as string[]
                     console.groupCollapsed(`tags of "${relevantFile.basename}"`)
-                    fileTags?.forEach((tag, index) => console.log(`${index}: "${tag}"`));
+                    fileTags.forEach((tag, index) => console.log(`${index}: "${tag}"`));
                     console.groupEnd();
-                    if((fileTags as string[]).contains(negatedSearchTag)) {
+
+                    let fileHasTag: boolean = false;
+                    console.groupCollapsed(`Testing each tag, contains: "${negatedSearchTag}"?`)
+                    fileTags.forEach(tag => {
+                        if(tag.contains(negatedSearchTag)) {
+                            fileHasTag = true;
+                            console.log(`"${tag}".contains("${negatedSearchTag}") = true`)
+                        }
+                        else console.log(`"${tag}".contains("${negatedSearchTag}") = false`)
+                    })
+                    console.groupEnd();
+
+
+                    if(fileHasTag) {
                         console.log(`%c"${relevantFile.basename}" does have: "${negatedSearchTag}"`, `color: red`);
                         irrelevantFiles.push(relevantFile);
                     }

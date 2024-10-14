@@ -2,20 +2,25 @@ import { CompressedScanner, Scanner } from "Scanner";
 
 import { ItemView, WorkspaceLeaf, Menu, Notice, MenuItem, TFile, Plugin } from "obsidian"
 import * as fs from "fs";
+import TagsPlus from "main";
 
 export const VIEW_TYPE_TAGSCANNER = "tagScanner-view"
-export const TAGVALUE_FORMAT: RegExp = /^(?:\s*!?\s*[üöäÜÖÄa-zA-z0-9_\-\/]+\s*)(?:&\s*!?\s*[üöäÜÖÄa-zA-z0-9_\-\/]+\s*)*$/
+export const TAGVALUE_FORMAT: RegExp = /^(?:\s*!?\s*[ßüöäÜÖÄa-zA-z0-9_\-\/]+\s*)(?:&\s*!?\s*[ßüöäÜÖÄa-zA-z0-9_\-\/]+\s*)*$/
 
 export class TagScannerView extends ItemView {
     
-   plugin: Plugin;
+   plugin: TagsPlus;
    rootScanners: Scanner[] = [];
 
-    constructor(leaf: WorkspaceLeaf, plugin: Plugin) {
-        console.groupCollapsed(`new TagScannerView(leaf: ${leaf.getDisplayText()})`);
-        console.groupCollapsed(`%cDescription`, `color: #a0a0a0`);
-        console.log(``);
-        console.groupEnd()
+    constructor(leaf: WorkspaceLeaf, plugin: TagsPlus) {
+        //Console Metadata
+        {
+            console.groupCollapsed(`new TagScannerView(leaf: ${leaf.getDisplayText()}) >> TagScannerView`);
+            console.groupCollapsed(`%cDescription`, `color: #a0a0a0`);
+            console.log(``);
+            console.groupEnd()
+        }
+        
         super(leaf)
         this.plugin = plugin;
         console.groupEnd();
@@ -32,7 +37,7 @@ export class TagScannerView extends ItemView {
     protected async onOpen(): Promise<void> {
         //Console Metadata
         {
-            console.groupCollapsed(`onOpen()`);
+            console.groupCollapsed(`onOpen() >> TagScannerView`);
             console.groupCollapsed(`%cTrace`, `color: #a0a0a0`);
             console.log(`Gets called when, the (TagScanner)View Instance is opend.`);
             console.log(`Called from: ${this.getDisplayText()}`);
@@ -93,7 +98,7 @@ export class TagScannerView extends ItemView {
                     }
 
                     const container = createEmptyHeader(content);
-                    const inputField = createInputField(container, undefined, TAGVALUE_FORMAT, () => {
+                    const inputField = createInputField(container, undefined, TAGVALUE_FORMAT, true,() => {
 
 
                         const tagValue = inputField.value;
@@ -153,7 +158,7 @@ export class TagScannerView extends ItemView {
     public saveScannerStructure(): void {
         //Console
         {
-            console.groupCollapsed(`saveScannerStructure()`)
+            console.groupCollapsed(`saveScannerStructure() >> TagScannerView`)
             console.groupCollapsed(`%cTrace`, `color: #a0a0a0`);
             console.log(`Mostly Called from a Scanner, when Scanner Structure was changed.`);
             console.trace();
@@ -190,7 +195,7 @@ export class TagScannerView extends ItemView {
 
     private loadScannerStructure(): void {
         {
-            console.groupCollapsed(`loadScannerStructure()`)
+            console.groupCollapsed(`loadScannerStructure() >> TagScannerView`)
             console.groupCollapsed(`%cTrace`, `color: #a0a0a0`);
             console.trace();
             console.groupEnd();
@@ -323,10 +328,10 @@ export class TagScannerView extends ItemView {
 
 
 
-export function createInputField(container: HTMLElement, defaultValue: string = "Unbenannt", restriction: RegExp | undefined, onEnter: (ev: KeyboardEvent) => void): HTMLInputElement {
+export function createInputField(container: HTMLElement, defaultValue: string = "Unbenannt", restriction: RegExp | undefined, select: boolean, onEnter: (ev: KeyboardEvent) => void): HTMLInputElement {
     //Console Metadata
     {
-        console.groupCollapsed(`createInputField(container: ${container.classList},\ndefaultValue: ${defaultValue})`);
+        console.groupCollapsed(`createInputField(container: ${container.classList},\ndefaultValue: ${defaultValue}) >> TagScannerView`);
         console.groupCollapsed(`%cTrace`, `color: #a0a0a0`);
         console.trace();
         console.groupEnd();
@@ -350,8 +355,8 @@ export function createInputField(container: HTMLElement, defaultValue: string = 
     addRenamingHighlightTo(container);
     
     inputField.focus();
-    inputField.select();
-    console.log(`Focused Field and selected Text: "${defaultValue}"`);
+    if(select) inputField.select();
+    
 
     container.addEventListener("contextmenu", (ev) => ev.stopPropagation());
     inputField.addEventListener("keypress", (ev) => {
@@ -386,7 +391,7 @@ export function createInputField(container: HTMLElement, defaultValue: string = 
 export function createEmptyHeader(container: HTMLElement): HTMLDivElement {
     //Console Metadata
     {
-        console.groupCollapsed(`createEmptyHeader(container: ${container.classList})`);
+        console.groupCollapsed(`createEmptyHeader(container: ${container.classList}) >> TagScannerView`);
         console.groupCollapsed(`%cTrace`, `color: #a0a0a0`);
         console.trace();
         console.groupEnd();

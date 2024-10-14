@@ -23,10 +23,25 @@
     console.groupEnd();
     console.groupCollapsed(`%cDescription`, `color: #a0a0a0`);
     console.groupCollapsed(`Goal`)
-    console.log(`Giving Feedback and error handling`); //Error Handling is not existend right now
+    console.log(``); 
     console.groupEnd();
     console.groupCollapsed(`Process`);
     console.log(``);
     console.groupEnd();
     console.groupEnd();
 }
+
+//Warning Log
+{
+    console.groupCollapsed(`%cWarning:`, `color: red`);
+    console.group(`Fix`)
+    console.log()
+    console.groupEnd();
+    console.group(`Consequence`)
+    console.log()
+    console.groupEnd();
+    console.groupEnd()
+    console.groupEnd();
+    console.warn(`Error in: `)
+}
+return

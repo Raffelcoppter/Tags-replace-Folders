@@ -1,9 +1,9 @@
-import { Plugin, TFile, TFolder } from "obsidian";
+import { Notice, Plugin, TFile, TFolder } from "obsidian";
 
 export function resOnCreateFile(plugin: Plugin, file: TFile) {
     //Console Metadata
     {
-        console.groupCollapsed(`resOnCreateFile(file: "${file.name})"`);
+        console.groupCollapsed(`resOnCreateFile(file: "${file.name})\n>> TagsPlus: Ressourcemanager"`);
         console.groupCollapsed(`%cTrace`, `color: #a0a0a0`);
         console.log(`Gets called whenever a new ressource was added.`)
         console.trace();
@@ -22,12 +22,9 @@ export function resOnCreateFile(plugin: Plugin, file: TFile) {
         console.groupEnd();
     }
 
-    let extension = file.extension
-    console.log(`extenstion = "${extension}"`);
-        
-    let newFolderName = `Plugin Ordner/Ressourcen/${extension}`
-    console.log(`newFolderName = "${newFolderName}"`)
 
+    let newFolderName = `Plugin Ordner/Ressourcen/${file.extension}`
+    console.log(`newFolderName = "${newFolderName}"`)
 
     plugin.app.vault.createFolder(newFolderName)
     .then(folderPromiseThenHandler)
@@ -36,22 +33,19 @@ export function resOnCreateFile(plugin: Plugin, file: TFile) {
     console.log(`%cWaiting for: "folder Promise"...`, `color: orange`)
  
 
-    let yaml = `---\ntags:\n  - Dateityp/${extension}\n---`;
- 
-    let extensionMark = ""
-    if(extension == "pdf" || extension == "mp3") {
-        extensionMark = "!"
-        console.log(`File is image or audio, automatically show link, (!)`)
+    //Getting referenceContent
+    let referenceContent: string;
+    {
+        console.groupCollapsed(`Getting referenceContent`)
+        let tags: string[] = ['Eintragsart/Referenz'];
+        tags.push(`Dateityp/${file.extension}`);
+
+
+
+        console.groupEnd();
     }
 
-    let content = `${yaml}\n${extensionMark}[${file.basename}](${newFolderName.replaceAll(" ", "%20")}/${file.name.replaceAll(" ", "%20")})`;
-    console.groupCollapsed(`content`)
-    console.log(content)
-    console.groupEnd();
 
-    plugin.app.vault.create(`${file.basename}.md`, content)
-    .then(filePromiseThenHandler)
-    console.log(`%cWaiting for: "file Promise"...`, `color: orange`);
 
 
     console.groupEnd(); //End Group: resOnCreateFile()
@@ -61,47 +55,49 @@ export function resOnCreateFile(plugin: Plugin, file: TFile) {
     function folderPromiseThenHandler(folder: TFolder) {
         //Console Metadata
         {
-            console.groupCollapsed(`%cfolderPromiseThenHandler()`, `color: green`)
+            console.groupCollapsed(`%cresOnCreateFile(file: "${file.basename}")`, `color: green`, `folderPromiseThenHandler(folder: ...)\n>> TagsPlus: Ressourcemanager`)
+            console.groupCollapsed(`...`)
+            console.groupCollapsed(`folder`)
+            console.log(folder)
+            console.groupEnd()
+            console.groupEnd();
             console.groupCollapsed(`%cTrace`, `color: #a0a0a0`);
-            console.log(`Promise from: resOnCreateFile(file: ${file.name})`)
             console.trace();
             console.groupEnd();
             console.groupCollapsed(`%cDescription`, `color: #a0a0a0`);
-            console.groupCollapsed(`Goal`)
-            console.log(`Giving Feedback`); //Error Handling is not existend right now
-            console.groupEnd();
-            console.groupCollapsed(`Process`);
-            console.log(`Logging the new folder`);
-            console.groupEnd();
-            console.groupEnd();
-
-            console.groupCollapsed(`created folder`)
-            let { name, parent, path} = folder
-            console.info({name, parent, path})
-            console.groupEnd();
-
+            console.log(`Giving Feedback`); 
             console.groupEnd();
         }
+
+        console.log(`Folder was created`)
+        new Notice(`New Ressource-folder was created: "${newFolderName}"`)
+
+        console.groupEnd();
     }
     function folderPromiseCatchHandler(reason: any) { 
         //Console Metadata
        {
-           console.groupCollapsed(`%cfolderPromiseCatchHandler()`, `color: red`)
-           console.groupCollapsed(`%cTrace`, `color: #a0a0a0`);
-           console.log(`Promise from: resOnCreateFile(file: ${file.name})`)
-           console.trace();
-           console.groupEnd();
-           console.groupCollapsed(`%cDescription`, `color: #a0a0a0`);
-           console.groupCollapsed(`Goal`)
-           console.log(`Giving Error Feedback`); 
-           console.groupEnd();
-           console.groupCollapsed(`Process`);
-           console.log(`Logging error and calming down.`);
-           console.groupEnd();
-           console.groupEnd();
+        console.groupCollapsed(`%cresOnCreateFile(file: "${file.basename}")`, `color: red`, `folderPromiseCatchHandler(reason: ...)\n>> TagsPlus: Ressourcemanager`)
+        console.groupCollapsed(`...`)
+        console.groupCollapsed(`reason`)
+        console.log(reason)
+        console.groupEnd()
+        console.groupEnd();
+        console.groupCollapsed(`%cTrace`, `color: #a0a0a0`);
+        console.log(`Promise from: resOnCreateFile(file: ${file.name})`)
+        console.trace();
+        console.groupEnd();
+        console.groupCollapsed(`%cDescription`, `color: #a0a0a0`);
+        console.groupCollapsed(`Goal`)
+        console.log(`Giving Error Feedback`); 
+        console.groupEnd();
+        console.groupCollapsed(`Process`);
+        console.log(`Logging error and calming down.`);
+        console.groupEnd();
+        console.groupEnd();
        }
 
-       console.log(`As long as, error reason is: "folder already exists", no problem`);
+       console.log(`folder was not created`)
        console.log(reason)
 
        console.groupEnd() //End Group: folderPromiseCatchHandler();
@@ -109,14 +105,13 @@ export function resOnCreateFile(plugin: Plugin, file: TFile) {
     function folderPromiseFinallyHandler() {
         //Console Metadata
         {
-            console.groupCollapsed(`%cfolderPromiseFinallyHandler()`, `color: orange`)
+            console.groupCollapsed(`%cresOnCreateFile(file: "${file.basename}")`, `color: orange`, `folderPromiseFinallyHandler()\n>> TagsPlus: Ressourcemanager`)
             console.groupCollapsed(`%cTrace`, `color: #a0a0a0`);
-            console.log(`Promise from: resOnCreateFile(file: ${file.name})`)
             console.trace();
             console.groupEnd();
             console.groupCollapsed(`%cDescription`, `color: #a0a0a0`);
             console.groupCollapsed(`Goal`)
-            console.log(`Moving ressource into the now existing folder.`); //Error Handling is not existend right now
+            console.log(`Moving ressource into the now existing folder.`); 
             console.groupEnd();
             console.groupCollapsed(`Process`);
             console.log(`Request move and call: renamePromiseThenHandler()`);
@@ -133,19 +128,18 @@ export function resOnCreateFile(plugin: Plugin, file: TFile) {
         function renamePromiseThenHandler() {
             //Console Metadata
             {
-                console.groupCollapsed(`%crenamePromiseHandler() `, `color: green`)
+                console.groupCollapsed(`%cresOnCreateFile(file: "${file.basename}")`, `color: green`, `renamePromiseThenHandler()\n>> TagsPlus: Ressourcemanager`)
                 console.groupCollapsed(`%cTrace`, `color: #a0a0a0`);
                 console.log(`Promise from: folderPromiseFinallyHandler()`)
                 console.trace();
                 console.groupEnd();
                 console.groupCollapsed(`%cDescription`, `color: #a0a0a0`);
-                console.groupCollapsed(`Goal`)
                 console.log(`Giving Feedback`);
-                console.groupEnd();
                 console.groupEnd();
             }
 
-            console.log(`%cMove was succesfull`);
+            console.log(`Move was succesfull`);
+            new Notice(`Ressource file was moved into new folder.`)
 
             console.groupEnd();
         }
