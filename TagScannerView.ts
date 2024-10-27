@@ -58,9 +58,8 @@ export class TagScannerView extends ItemView {
         }
 
         const content = this.contentEl
-        const linkToCSS = content.createEl("link");
-        linkToCSS.rel = "stylesheet";
-        linkToCSS.href = "styles.css";
+        //const linkToCSS = content.createEl("link");
+        //linkToCSS.rel = "stylesheet";
 
         content.empty();
 
@@ -195,7 +194,7 @@ export class TagScannerView extends ItemView {
 
     private loadScannerStructure(): void {
         {
-            console.groupCollapsed(`loadScannerStructure() >> TagScannerView`)
+            console.groupCollapsed(`loadScannerStructure() \n>> TagsPlus: TagScanner-UI`)
             console.groupCollapsed(`%cTrace`, `color: #a0a0a0`);
             console.trace();
             console.groupEnd();
@@ -211,6 +210,7 @@ export class TagScannerView extends ItemView {
             )
             console.groupEnd()
             console.groupEnd()
+            console.time("loadScannerStructure")
         }
 
         let compressedScanners: CompressedScanner[] = JSON.parse(fs.readFileSync(`${(this.app.vault.adapter as any).basePath}\\savedScanners.json`).toString());
@@ -220,6 +220,7 @@ export class TagScannerView extends ItemView {
         })
 
         console.groupEnd();
+        console.timeEnd(`loadScannerStructure`)
     }
 
     private stringLogicToBool(string: string, boolValues: {[key: string]: boolean}): boolean {

@@ -1,6 +1,7 @@
 import TagsPlus from "main";
 import { FrontMatterCache, Plugin, TAbstractFile, TFile, TFolder } from "obsidian";
 import { createHash } from "crypto";
+import { TemplateModal } from "SyncTemplateManager";
 
 
 //Initizializers
@@ -103,6 +104,7 @@ export async function folderStructureCreate(plugin: TagsPlus): Promise<void> {
 
         console.groupCollapsed(`Renaming requests`)
 
+        plugin.ignoreAllRenames = true;
         let renamePromises: Promise<void>[] = [];
         notes.forEach((note) => {
             
@@ -147,6 +149,8 @@ export async function folderStructureCreate(plugin: TagsPlus): Promise<void> {
             console.groupCollapsed(`Settled rename promises`)
             console.log(settledRenamePromises)
             console.groupEnd();
+
+            plugin.ignoreAllRenames = false;
 
             folderStructureCleanUp(plugin);
 
@@ -423,6 +427,8 @@ export function folderStructureOnCreateFile(plugin: TagsPlus, file: TFile): void
         console.groupEnd();
         console.groupEnd();
     }
+
+
 
     console.groupEnd();
 }

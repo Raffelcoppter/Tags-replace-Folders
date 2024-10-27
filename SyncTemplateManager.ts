@@ -1,15 +1,17 @@
 import TagsPlus from "main";
-import { Modal, Notice, Plugin, TFile, TFolder } from "obsidian";
+import { text } from "node:stream/consumers";
+import { App, FuzzySuggestModal, Modal, Notice, Plugin, Setting, SuggestModal, TFile, TFolder } from "obsidian";
 import { folderNameToHashedFolderName, folderStructureOnModifyFile, getTagsThroughContent, getTagsThroughMetadata, tagsToFolderName } from "TagFolderManager";
+import { createInputField } from "TagScannerView";
 
 //Regular Expression for parsing sync templates
-const defaultRegEx: RegExp = /[\w\W]*/g
+const defaultRegEx: RegExp = /[\w\W]*?/g
 export const configurationRegEx: RegExp = /<!\n[\w\W]+\n!>\n/g   
-const contentVariableRegEx: RegExp = /<{[\w\W]+?}>/g
-const notizNameDefaultRegExp: RegExp = /[^"*/\\<>:|?}]+/g
+export const contentVariableRegEx: RegExp = /<{[\w\W]+?}>/g
+export const notizNameDefaultRegExp: RegExp = /[^"*/\\<>:|?}]+?/g
 
 //Event watchers
-export function syncTemplateStructureOnCreate(plugin: TagsPlus, file: TFile) {
+/*export function syncTemplateStructureOnCreate(plugin: TagsPlus, file: TFile) {
     //Console Metadata
     {
         console.groupCollapsed(`syncTemplateStructureOnCreate()\n>> TagsPlus: SyncTemplateManager`);
@@ -159,9 +161,175 @@ export function syncTemplateStructureOnCreate(plugin: TagsPlus, file: TFile) {
     console.log(`%cWaiting for modifyPromise...`, `color: orange`)
 
     console.groupEnd();
+}*/
+
+export function syncTemplateStructureOnCreateFile(plugin: TagsPlus, file: TFile) {
+    //Console Metadata
+    {
+        console.groupCollapsed(`syncTemplateStructureOnCreateFile(file: "${file.basename}")\n>> TagsPlus: SyncTemplateManager`);
+        console.groupCollapsed(`%cTrace`, `color: #a0a0a0`);
+        console.trace();
+        console.groupEnd();
+        console.groupCollapsed(`%cDescription`, `color: #a0a0a0`);
+        console.groupCollapsed(`Goal`)
+        console.log(`Prompt the user for a sync Template, then based on that create a file.`);
+        console.groupEnd();
+        console.groupCollapsed(`Process`);
+        console.log(`When this gets called, it means it wasnt created from a scanner,`,
+            `\nthis means we dont know the tags, just when it was created, the name of the file.`,
+            `\nSo we the one thing that can have relationships is the name of the file.`
+        );
+        console.groupEnd();
+        console.groupEnd();
+    }
+
+    let syncTemplates: TFile[] | undefined = plugin.app.vault.getFolderByPath(`Plugin Ordner/Sync Templates`)?.children.filter(file => file instanceof TFile)
+    if(!syncTemplates) {
+        //Warning Log
+        {
+            console.groupCollapsed(`%cWarning: sync templates folder not found!`, `color: red`);
+            console.group(`Fix`)
+            console.log(`Check path inconsistancy`)
+            console.groupEnd();
+            console.group(`Consequence`)
+            console.log(`Not able to prompt user for sync Templates`)
+            console.groupEnd();
+            console.groupEnd()
+            console.groupEnd();
+            console.warn(`Error in: "syncTemplateStructureOnCreate(file: "${file.basename}")"`)
+        }
+        return
+    }
+
+    new TemplateModal(plugin.app, (syncTemplate) => {
+        //Console Metadata
+        {
+            console.groupCollapsed(`%csyncTemplateStructureOnCreateFile(file: "${file.basename}")`, `color: orange`, `syncTemplateInputHandler(syncTemplate: "${syncTemplate.basename}")\n>> TagsPlus: SyncTemplateManager`)
+            console.groupCollapsed(`%cTrace`, `color: #a0a0a0`);
+            console.trace();
+            console.groupEnd();
+            console.groupCollapsed(`%cDescription`, `color: #a0a0a0`);
+            console.groupCollapsed(`Goal`)
+            console.log(``); 
+            console.groupEnd();
+            console.groupCollapsed(`Process`);
+            console.log(``);
+            console.groupEnd();
+            console.groupEnd();
+        }
+
+        let syncTemplateMetadata = plugin.syncTemplateMetadataList.get(syncTemplate.path)
+        if(!syncTemplateMetadata) {
+            //Warning Log
+            {
+                console.groupCollapsed(`%cWarning: SyncTemplate not found in Metadatalist`, `color: red`);
+                console.group(`Fix`)
+                console.log(`Check list`)
+                console.log(`syncTemplate.path = "${syncTemplate.path}"`)
+                console.groupCollapsed(`syncTemplateMetadataList`)
+                console.log(plugin.syncTemplateMetadataList)
+                console.groupEnd();
+                console.groupEnd();
+                console.group(`Consequence`)
+                console.log(`Cant apply Template.`)
+                console.groupEnd();
+                console.groupEnd()
+                console.groupEnd();
+                console.warn(`Error in: "syncTemplateInputHandler(syncTemplate: "${syncTemplate.basename}")"`)
+            }
+            return
+        }
+
+        //Getting defaultFileName and select
+        let defaultFileName: string;
+        let select: boolean;
+        {
+            console.groupCollapsed(`Getting defaultFileName`)
+            if(file.basename != "Unbennant") {
+                console.log(`File Basename was already set to to something`)
+                select = false;
+                defaultFileName = file.basename;
+            }
+            else {
+                console.log("File has no defined Name yet.")
+                if(syncTemplateMetadata.notizNameDefault) {
+                    console.log(`syncTemplate has a defined default`)
+                    console.log(`syncTemplateMetadata.notizNameDefault = "${syncTemplateMetadata.notizNameDefault}"`)
+                    select = syncTemplateMetadata.selectNotizNameDefault;
+                    defaultFileName = syncTemplateMetadata.notizNameDefault;
+                }
+                else {
+                    console.log("Sync Template has no default notizName value set.")
+                    select = true;
+                    defaultFileName = "Unbenannt"
+                }
+            }
+
+            console.groupEnd()
+        }
+        console.log(`%defaultFileName = "${defaultFileName}"`, `color: blue`)
+        console.log(`%cselect = "${select}`, `color: blue`)
+        
+
+        new InputModal(plugin.app, "Gib den Notiz Namen ein", "notizName", defaultFileName, select, (fileBasename) => {
+            //Console Metadata
+            {
+                console.groupCollapsed(`%csyncTemplateStructureOnCreateFile(file: "${file.basename}")`, `color: orange`, `fileBasenameInputHandler(fileBasename: "${fileBasename}")\n>> TagsPlus: SyncTemplateManager`)
+                console.groupCollapsed(`%cTrace`, `color: #a0a0a0`);
+                console.trace();
+                console.groupEnd();
+                console.groupCollapsed(`%cDescription`, `color: #a0a0a0`);
+                console.groupCollapsed(`Goal`)
+                console.log(``); 
+                console.groupEnd();
+                console.groupCollapsed(`Process`);
+                console.log(``);
+                console.groupEnd();
+                console.groupEnd();
+            }
+
+            let fromValToContentMap: Map<string, string> = new Map()
+            fromValToContentMap.set("notizName", fileBasename)
+            let processedNoteContent = getProcessedNoteContentFromRawInputs(fromValToContentMap, syncTemplateMetadata)
+            console.groupCollapsed(`%cprocessedNoteContent`, `color: blue`)
+            console.log(processedNoteContent)
+            console.groupEnd();
+
+            //Getting fileAdress
+            let fileAdress: string;
+            {
+                console.groupCollapsed(`Getting fileAdress`)
+                let fileTags = getTagsThroughContent(processedNoteContent)
+                let tagFolderName = tagsToFolderName(fileTags)
+                let hashedTagFolderName = folderNameToHashedFolderName(plugin, tagFolderName)
+
+                fileAdress = `${hashedTagFolderName}/${fileBasename}.md`
+                console.groupEnd()
+            }
+            console.log(`%cfileAdress = "${fileAdress}"`, `color: blue`)
+
+            plugin.ignoreNextModify = true;
+            plugin.app.vault.modify(file, processedNoteContent)
+
+            folderStructureOnModifyFile(plugin, file, fileAdress)
+
+            plugin.fileMetadataList.set(fileAdress, new FileMetadataExtension(plugin, processedNoteContent, syncTemplate, fileBasename))
+
+            console.groupEnd();
+        }).open();
+
+        console.log(`%cWaiting for: fileBasenameInput`, `color: orange`)
+
+        console.groupEnd();
+    }).open()
+    
+    console.log(`%cWaiting for: SyncTemplateInput...`, `color: orange`)
+
+    console.groupEnd();
 }
 
-export function syncTemplateStructureOnModify(plugin: TagsPlus, file: TFile, newFileContent: string) {
+
+export function syncTemplateStructureOnModify(plugin: TagsPlus, file: TFile, newFileContent: string): Promise<void> | null {
     //Console Metadata
     {
         console.groupCollapsed(`syncTemplateStructureOnModify(file: "${file.basename}", newFileContent: ...,\nnewTagFolderName: ...)`);
@@ -210,7 +378,7 @@ export function syncTemplateStructureOnModify(plugin: TagsPlus, file: TFile, new
                 console.groupEnd();
                 console.warn(`Error in: syncTemplateStructureOnModify(file: "${file.basename}", ...)`)
             }
-            return
+            return null;
         }
         syncTemplateMetadata = plugin.syncTemplateMetadataList.get(oldFileMetadata.syncTemplate.path)
         if(!syncTemplateMetadata) {
@@ -229,7 +397,7 @@ export function syncTemplateStructureOnModify(plugin: TagsPlus, file: TFile, new
                 console.groupEnd();
                 console.warn(`Error in: syncTemplateStructureOnModify(file: "${file.basename}")`)
             }
-            return
+            return null;
         }
 
         console.log(`%cNo errors`, `color: green`)
@@ -430,13 +598,12 @@ export function syncTemplateStructureOnModify(plugin: TagsPlus, file: TFile, new
 
     if(contentChanged) {
         console.log(`Request: content modify`)
-        plugin.ignoreNextModify = true;
-        plugin.app.vault.modify(file, processedFileContent)
-        console.log(`%cWaiting for: modify promise...`, `color: orange`)
+        return(plugin.app.vault.modify(file, processedFileContent))
     }
 
+    
     console.groupEnd();
- 
+    return null;
 }
 
 export function syncTemplateStructureOnRenameFile(plugin: TagsPlus, file: TFile, oldFilePath: string) {
@@ -646,7 +813,7 @@ type attachOrDetachString = {
 type command = replaceAll | attachOrDetachString
 //Event Watcher Helpers
 
-function applyRelationships(fromValToContentMap: Map<string, string>, relationships: {from: string, to: string, rules: command[]}[]): Map<string, string> | "Overlap-Error" { 
+export function applyRelationships(fromValToContentMap: Map<string, string>, relationships: {from: string, to: string, rules: command[]}[]): Map<string, string> | "Overlap-Error" { 
     //Console Metadata
     {
         console.groupCollapsed(`applyRelationships(fromValNameAndContent: ..., relationships: ...)`);
@@ -836,7 +1003,13 @@ function applyRelationship(fromVal: string, relationship: {from: string, to: str
             }
             else if(rule.type == "detachFromBack") {
                 console.log(`type: detachFromBack`)
-                toVal = toVal.slice(0, toVal.length - rule.string.length)
+                if(toVal.slice(toVal.length - rule.string.length) == rule.string) {
+                    console.log(`%ctoVal contains the to be detatched string at the front`, `color: green`)
+                    toVal = toVal.slice(0, toVal.length - rule.string.length)
+                }
+                else {
+                    console.log(`%ctoVal does not contain the to be detatched string at the front`, `color: red`)
+                }
             }
 
             console.log(`after: toVal = "${toVal}"`)
@@ -902,7 +1075,7 @@ export function applyNewContentBlocks(newContentBlocks: Map<string,string>, note
     return returnContent;
 }
 
-function combineMaps(prioMap: Map<string, string>, map: Map<string, string>): Map<string, string> {
+export function combineMaps(prioMap: Map<string, string>, map: Map<string, string>): Map<string, string> {
     //Console Metadata
     {
         console.groupCollapsed(`combineMaps(prioMap: ..., map: ...)`);
@@ -982,6 +1155,80 @@ function combineMaps(prioMap: Map<string, string>, map: Map<string, string>): Ma
 
     console.groupEnd();
     return combinedMap;    
+}
+
+export function getProcessedNoteContentFromRawInputs(fromValToContentMap: Map<string, string>, syncTemplateMetadata: SyncTemplateMetadataExtension): string {
+    //Console Metadata
+    {
+        console.groupCollapsed(`getProcessedNoteContentFromRawInputs(fromValToContentMap:..., syncTemplateMetadata:...)`);
+        console.groupCollapsed(`...`)
+        console.groupCollapsed(`fromValToContentMap`)
+        console.log(fromValToContentMap)
+        console.groupEnd();
+        console.groupCollapsed(`syncTemplateMetadata`)
+        console.log(syncTemplateMetadata)
+        console.groupEnd()
+        console.groupEnd();
+        console.groupCollapsed(`%cTrace`, `color: #a0a0a0`);
+        console.trace();
+        console.groupEnd();
+        console.groupCollapsed(`%cDescription`, `color: #a0a0a0`);
+        console.groupCollapsed(`Goal`)
+        console.log(`For "Note Creation", either from scanner or from the create note event.`, 
+            `\nIn both cases a note content is need just from infos about name, tags and syncTemplate.`,
+            `\nThis function provides an attempt for a note content, when given just the raw inputs of for example notizName and freieKategorien...`
+        );
+        console.groupEnd();
+        console.groupCollapsed(`Process`);
+        console.log(`Applying the relationships of every value, checking for overlap.`,
+            `\nIf not there, combine Maps piece by piece, first with the new values from the relationships,`,
+            `\nthen from the default values from the syncTemplateMetadata.`,
+            `\nThen last step is to remove every contentVariabe that remains without value.`
+        );
+        console.groupEnd();
+        console.groupEnd();
+    }
+    let processedNoteContent: string;
+
+    let toValToContentMap = applyRelationships(fromValToContentMap, syncTemplateMetadata.relationships)
+    if(toValToContentMap == "Overlap-Error") {
+        //Warning Log
+        {
+            console.groupCollapsed(`%cOverlap-Warning: applyRelationships didnt work on file creation`, `color: red`);
+            console.group(`Fix`)
+            console.log(`Since this was called from creation, something is probably wrong with the logic of the syncTemplate`)
+            console.log(`syncTemplate: "${syncTemplateMetadata.syncTemplateBaseName}"`)
+            console.groupEnd();
+            console.group(`Consequence`)
+            console.log(`Cant create file!`)
+            console.groupEnd();
+            console.groupEnd()
+            console.groupEnd();
+            console.groupEnd();
+            console.warn(`Error in: "getProcessedNoteContentFromRawInputs(...)"`)
+        }
+        return "";
+    }
+    console.groupCollapsed(`toValToContentMap`)
+    console.log(toValToContentMap)
+    console.groupEnd();
+
+    let contentVariableToContentMap = combineMaps(toValToContentMap, fromValToContentMap)
+    console.groupCollapsed(`contentVariableToContentMap`)
+    console.log(contentVariableToContentMap)
+    console.groupEnd();
+    
+    let completedContentVariableToContentMap = combineMaps(contentVariableToContentMap, syncTemplateMetadata.nameToDefaultConfigMap)
+    console.groupCollapsed(`completedContentVariableToContentMap`)
+    console.log(completedContentVariableToContentMap)
+    console.groupEnd()
+    
+    
+    processedNoteContent= applyNewContentBlocks(completedContentVariableToContentMap, syncTemplateMetadata.noteContentWithVariables)
+    processedNoteContent = processedNoteContent.replaceAll(contentVariableRegEx, "");
+
+    console.groupEnd();
+    return processedNoteContent;
 }
 
 //Metadata functions and classes
@@ -1756,8 +2003,8 @@ export class SyncTemplateMetadataExtension {
 
                         let oldValRegEx: RegExp = new RegExp(oldVal, "g")
                         console.log(`oldValRegEx = ${oldValRegEx}`)
-                        let newValRegEx: RegExp = new RegExp(stringIntoRegExString(newVal))
-                        console.log(`newValRegEx = ${newValRegEx}`, "g")
+                        let newValRegEx: RegExp = new RegExp(stringIntoRegExString(newVal), "g")
+                        console.log(`newValRegEx = ${newValRegEx}`)
 
                         commands.push({type: "replaceAll", old: oldValRegEx, new: newVal} as replaceAll);
                         negatedCommands.push({type: "replaceAll", old: newValRegEx, new: oldVal} as replaceAll)
@@ -2033,6 +2280,34 @@ export class SyncTemplateMetadataExtension {
         console.groupEnd();
         return;
     }
+
+    /*
+    replaceVariablesInContent(boundTags: Map<string, string>) {
+        //Console Metadata
+        {
+            console.groupCollapsed(`replaceVariablesInContent(boundTags:...)\n>> TagsPlus: SyncTemplateManager`);
+            console.groupCollapsed(`...`)
+            console.groupCollapsed(`boundTags`)
+            console.log(boundTags)
+            console.groupEnd()
+            console.groupEnd()
+            console.groupCollapsed(`%cTrace`, `color: #a0a0a0`);
+            console.trace();
+            console.groupEnd();
+            console.groupCollapsed(`%cDescription`, `color: #a0a0a0`);
+            console.groupCollapsed(`Goal`)
+            console.log(`Replacing every content Variable, either with a bound Tag, if so configured or the default.`
+            );
+            console.groupEnd();
+            console.groupCollapsed(`Process`);
+            console.log(``);
+            console.groupEnd();
+            console.groupEnd();
+        }
+
+
+    }*/
+
 }   
 
 export function loadSyncTemplateMetadata(plugin: TagsPlus): void {
@@ -2232,7 +2507,6 @@ export function getSyncTemplate(plugin: TagsPlus, tags: string[]): TFile | null 
         console.groupEnd();
         console.groupEnd();
     }
-
 
     
     //Getting the syncTemplates and the Base-Template from  "Plugin Ordner/Sync Templates" can later be updated to a dynamic folder path the user can decide
@@ -2446,6 +2720,134 @@ export function setStatusBar(plugin: TagsPlus, file: TFile | null, status?: "act
 }
 
 
+export class TemplateModal extends FuzzySuggestModal<TFile> {
+
+    onChooseTemplate: (syncTemplate: TFile) => void
+    
+
+    constructor(app: App , onChooseTemplate: (syncTemplate: TFile) => void) {
+        //Console Metadata
+        {
+            console.groupCollapsed(`new TemplateModal()\n>> TagsPlus: SyncTemplateManager`);
+            console.groupCollapsed(`%cTrace`, `color: #a0a0a0`);
+            console.trace();
+            console.groupEnd();
+            console.groupCollapsed(`%cDescription`, `color: #a0a0a0`);
+            console.groupCollapsed(`Goal`)
+            console.log(`Creating a TemplateModal`);
+            console.groupEnd();
+            console.groupCollapsed(`Process`);
+            console.log(`calling the super constructor from FuzzySuggestModal<TFile>`);
+            console.groupEnd();
+            console.groupEnd();
+        }
+
+        super(app)
+        this.onChooseTemplate = onChooseTemplate;
+        console.groupEnd();
+    }
+
+    getItemText(file: TFile): string {
+        //Console Metadata
+        {
+            console.groupCollapsed(`getItemText(file: "${file.basename}")\n>> TagsPlus: SyncTemplateManager`);
+            console.groupCollapsed(`%cTrace`, `color: #a0a0a0`);
+            console.trace();
+            console.groupEnd();
+            console.groupCollapsed(`%cDescription`, `color: #a0a0a0`);
+            console.groupCollapsed(`Goal`)
+            console.log(`Getting the basename`);
+            console.groupEnd();
+            console.groupCollapsed(`Process`);
+            console.log(`returning the basename property`);
+            console.groupEnd();
+            console.groupEnd();
+        }
+
+        console.log(`%cfile.basename = "${file.basename}"`, `color: blue`)
+        console.groupEnd()
+        return file.basename;
+    }
+
+    getItems(): TFile[] {
+        //Console Metadata
+        {
+            console.groupCollapsed(`getItems()\n>> TagsPlus: SyncTemplateManager`);
+            console.groupCollapsed(`%cTrace`, `color: #a0a0a0`);
+            console.trace();
+            console.groupEnd();
+            console.groupCollapsed(`%cDescription`, `color: #a0a0a0`);
+            console.groupCollapsed(`Goal`)
+            console.log(`Getting the syncTemplates`);
+            console.groupEnd();
+            console.groupCollapsed(`Process`);
+            console.log(`Getting the children of the Pluign Ordner/Sync Templates folder`);
+            console.groupEnd();
+            console.groupEnd();
+        }
+
+        let syncTemplates: TFile[] | undefined = this.app.vault.getFolderByPath(`Plugin Ordner/Sync Templates`)?.children.filter(file => file instanceof TFile)
+        if(!syncTemplates) {
+            //Warning Log
+            {
+                console.groupCollapsed(`%cWarning: sync templates folder not found!`, `color: red`);
+                console.group(`Fix`)
+                console.log(`Check path inconsistancy`)
+                console.groupEnd();
+                console.group(`Consequence`)
+                console.log(`Not able to prompt user for sync Templates`)
+                console.groupEnd();
+                console.groupEnd()
+                console.groupEnd();
+                console.warn(`Error in: getItems()`)
+            }
+            return []
+        }
+        console.groupCollapsed(`%csyncTemplates`, `color: blue`)
+        syncTemplates.forEach((value, index) => console.log(`${index}: "${value}"`))
+        console.groupEnd();
+        
+        console.groupEnd()
+        return syncTemplates
+    }
+
+    onChooseItem(syncTemplate: TFile, evt: MouseEvent | KeyboardEvent): void {this.onChooseTemplate(syncTemplate)}
+
+}
+
+export class InputModal extends Modal {
+    constructor(app: App, title: string, inputName: string,placeholder: string, select: boolean, onSubmit: (input: string) => void) {
+        super(app);
+
+        this.setTitle(title)
+        
+        let name = placeholder;
+        new Setting(this.contentEl)
+        .setName(inputName)
+        .addText((text) => {
+            text.onChange(value => {
+                name = value;
+            })
+            text.setValue(placeholder)
+            if(select) text.inputEl.select()
+        
+        })
+
+        new Setting(this.contentEl)
+        .addButton((btn) => {
+            btn
+            .setButtonText("Submit")
+            .setCta()
+            .onClick(() => {
+                this.close()
+                onSubmit(name)
+            })
+        })
+
+    }
+}
+
+
 //Utility
 export function stringIntoRegExString(string: string): string {
     //Console Metadata
@@ -2472,3 +2874,5 @@ export function stringIntoRegExString(string: string): string {
     console.groupEnd();
     return regExCompatibleString;
 }
+
+

@@ -1,8 +1,8 @@
-import { structureOnDeleteFile, structureOnModifyFile, structureOnRenameFile } from 'BackendEventManager';
+import { structureOnCreateFile, structureOnDeleteFile, structureOnModifyFile, structureOnRenameFile } from 'BackendEventManager';
 import { addCommands } from 'CustomCommands';
 import { App, WorkspaceLeaf, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, TFolder, TFile, MetadataCache, TAbstractFile, EventRef } from 'obsidian';
 import { resOnCreateFile } from 'Ressourcemanagement';
-import { FileMetadataExtension, loadFileMetadata, loadSyncTemplateMetadata, SyncTemplateMetadataExtension, syncTemplateStructureOnCreate, setStatusBar, syncTemplateStructureOnModify } from 'SyncTemplateManager';
+import { FileMetadataExtension, loadFileMetadata, loadSyncTemplateMetadata, SyncTemplateMetadataExtension, syncTemplateStructureOnCreateFile, setStatusBar, syncTemplateStructureOnModify } from 'SyncTemplateManager';
 import { folderStructureCreate, folderStructureOnCreateFile, folderStructureOnDeleteFile, folderStructureOnModifyFile } from 'TagFolderManager';
 import { TagScannerView, VIEW_TYPE_TAGSCANNER } from 'TagScannerView';
 
@@ -18,9 +18,11 @@ export default class TagsPlus extends Plugin {
 	hashToFolderNameMap: Map<string, string> = new Map();
 	//lastNoteIntegratedIntoUniqueFolderStructure: boolean = false;
 	
+	ignoreAllRenames: boolean = false;
 	ignoreAllModifies: boolean = false;
 	ignoreNextModify: boolean = false;
 	ignoreNextRename: boolean = false;
+	ignoreNextCreate: boolean = false;
 
 	async onload() {
 		//Console Metadata
@@ -75,8 +77,9 @@ export default class TagsPlus extends Plugin {
 
 		this.registerEvent(this.app.vault.on("create", (abstractFile) => {
 			if(abstractFile instanceof TFile && abstractFile.extension == "md" && !abstractFile.path.includes(`Plugin Ordner`)) {
-				folderStructureOnCreateFile(this, abstractFile);
-				syncTemplateStructureOnCreate(this, abstractFile)
+				structureOnCreateFile(this, abstractFile)
+				//folderStructureOnCreateFile(this, abstractFile);
+				//syncTemplateStructureOnCreate(this, abstractFile)
 			}
 			if(abstractFile instanceof TFile && abstractFile.extension != "md") {
 				//resOnCreateFile(this, abstractFile)

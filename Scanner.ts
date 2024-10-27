@@ -4,8 +4,8 @@ import { Menu, Notice, Plugin, TFile, TFolder } from "obsidian";
 
 import * as fs from "fs";
 import TagsPlus from "main";
-import { getSyncTemplate, FileMetadataExtension, SyncTemplateMetadataExtension } from "SyncTemplateManager";
-import { getTagsThroughContent, getTagsThroughMetadata } from "TagFolderManager";
+import { getSyncTemplate, FileMetadataExtension, SyncTemplateMetadataExtension, combineMaps, applyRelationships, applyNewContentBlocks, contentVariableRegEx, notizNameDefaultRegExp, getProcessedNoteContentFromRawInputs, syncTemplateStructureOnModify } from "SyncTemplateManager";
+import { folderNameToHashedFolderName, folderStructureOnModifyFile, getTagsThroughContent, getTagsThroughMetadata, tagsToFolderName } from "TagFolderManager";
 import { createHash } from "crypto";
 
 
@@ -392,51 +392,81 @@ export class Scanner {
                             console.groupEnd()
                         }
 
-                        new Notice(`Test 1:${this.searchTags.join(`,`)}`)
 
                         //Matching boundTagsFromSyncTemplate to searchTags
-                        let freieKategorien: string[] = []; //This gets reduced
+                        let freieKategorien: string[] = []; 
                         let gebundeneKategorien: Map<string, string> = new Map()
+                        let boundSearchTags: string[] = [];
                         {
                             console.groupCollapsed(`Matching boundTagsFromSyncTemplate to searchTags`)
-                            syncTemplateMetadata.nameToTagBoundConfigMap.forEach((value, key) => {  //Value beeing the start of the tag
-                                console.groupCollapsed(`${key} => ${value}`)
-                                
-                                let fittingTag: string | null = null;
-                                console.groupCollapsed(`Cycling through freieKategorien`)
-                                this.searchTags.forEach(tag => {
-                                    console.groupCollapsed(`freieKategorie = "${tag}"`)
 
-                                    if(`#${tag}`.contains(value)) {
-                                        console.log(`%c${tag} is bound to "${key}"`, `color: green`)
-                                        gebundeneKategorien.set(key, tag)
-                                        fittingTag = tag;
+                            //Getting gebundeKategorien
+                            {
+                                console.groupCollapsed(`Getting gebundene Kategorien`)
+
+                                let blackList: string[] = [];
+                                syncTemplateMetadata.nameToTagBoundConfigMap.forEach((value, key) => {  //Value beeing the start of the tag
+                                    console.groupCollapsed(`${key} => ${value}`)
+                                    
+                                    let fittingTag: string | null = null;
+                                    console.groupCollapsed(`Cycling through this.searchTag`)
+                                    this.searchTags.forEach(searchTag => {
+                                        console.groupCollapsed(`freieKategorie = "${searchTag}"`)
+                                        if(blackList.contains(searchTag)) {
+                                            console.log(`%c"${searchTag}" is already bound to another tag.`, `color: orange`)
+                                        }
+                                        else {
+                                            if(`#${searchTag}`.contains(value)) {
+                                                console.log(`%c${searchTag} is bound to "${key}"`, `color: green`)
+                                                gebundeneKategorien.set(key, `#${searchTag}`)
+                                                boundSearchTags.push(`${searchTag}`)
+                                                fittingTag = searchTag;
+                                                blackList.push(searchTag)
+    
+                                                console.groupEnd();
+                                                return;
+                                            }
+                                            else {
+                                                console.log(`%ctag did not match the value of the map`, `color: red`)
+                                            }
+                                        }
+
                                         console.groupEnd();
-                                        return;
+                                    })
+                                    console.groupEnd()
+    
+                                    if(fittingTag) {
+                                        console.log(`%cA Tag was found for the bound Kategorie`, `color: green`)
+                                        console.log(`${key} => "${fittingTag}"`)
                                     }
                                     else {
-                                        console.log(`%ctag did not match the value of the map`)
-                                        freieKategorien.push(tag)
+                                        console.log(`%cNo Tag found for boundTag`, `color: red`)
                                     }
-
+    
                                     console.groupEnd();
                                 })
-                                console.groupEnd()
-
-                                if(fittingTag) {
-                                    console.log(`%cA Tag was found for the bound Kategorie`, `color: green`)
-                                    console.log(`${key} => "${fittingTag}"`)
-                                }
-                                else {
-                                    console.log(`%cNo Tag found for boundTag`, `color: red`)
-                                }
-
                                 console.groupEnd();
-                            })
+                            }
+                            
+
+                            //Getting freieKategorien
+                            {
+                                console.groupCollapsed(`Getting freieKategorien`)
+                                this.searchTags.forEach(searchTag => {
+                                    if(boundSearchTags.contains(searchTag)) {
+                                        console.log(`%c"${searchTag}" is bound`, `color: red`)
+                                    }
+                                    else {
+                                        console.log(`%c"${searchTag}" is free`, `color: green`)
+                                        freieKategorien.push(searchTag);
+                                    }
+                                })
+                                console.groupEnd()
+                            }
+
                             console.groupEnd();
                         }
 
-                        new Notice(`Test 2:${this.searchTags.join(`,`)}`)
 
                         console.groupCollapsed(`freieKategorien`)
                         freieKategorien.forEach((value, index) => console.log(`${index}: "${value}`))
@@ -513,7 +543,8 @@ export class Scanner {
                         console.groupEnd();
 
                         
-                    
+                        
+                        /*
                         let syncTemplateNoteContent: string = syncTemplateMetadata.noteContentForCreation;
                         console.groupCollapsed(`syncTemplateNoteContent`)
                         console.log(syncTemplateNoteContent)
@@ -562,24 +593,48 @@ export class Scanner {
                         console.groupCollapsed(`processedNoteContent`)
                         console.log(processedNoteContent)
                         console.groupEnd();
-       
+                        */
 
                         const container = this.childrenNotesEl.createDiv({cls: "noteContainer"});
                         const innerContainer = container.createSpan({cls: "note"});
-                        const inputField = createInputField(container, syncTemplateMetadata.notizNameDefault , syncTemplateMetadata.nameToRegExConfigMap.get("notizNameRegExConfig"), syncTemplateMetadata.selectNotizNameDefault, async () => {
+                        const inputField = createInputField(container, syncTemplateMetadata.notizNameDefault , syncTemplateMetadata.nameToRegExConfigMap.get("notizNameRegExConfig") ?? notizNameDefaultRegExp, syncTemplateMetadata.selectNotizNameDefault, async () => {
                             const title = inputField.value;  
                             container.remove();
 
-                            processedNoteContent = processedNoteContent.replaceAll(`((notizName))`, `${title}`)
-
-                            console.groupCollapsed(`final content version`)
+                            
+                            let fromValToContentMap: Map<string, string> = new Map()
+                            fromValToContentMap.set(`notizName`, title)
+                            fromValToContentMap.set(`freieKategorien`, freieKategorienString)
+                            fromValToContentMap = combineMaps(fromValToContentMap, gebundeneKategorien);
+                            console.groupCollapsed(`fromValToContentMap`)
+                            console.log(fromValToContentMap)
+                            console.groupEnd();
+                            
+                            let processedNoteContent = getProcessedNoteContentFromRawInputs(fromValToContentMap, syncTemplateMetadata)
+                            console.groupCollapsed(`%processedNoteContent`, `color: blue`)    
                             console.log(processedNoteContent)
                             console.groupEnd();
 
-                            plugin.fileMetadataList.set(`${title}.md`, new FileMetadataExtension(plugin, processedNoteContent, syncTemplate, title))
+                            //Getting filePath
+                            let filePath: string;
+                            {
+                                console.groupCollapsed(`Getting filePath`)
 
-                            const note = await this.plugin.app.vault.create(`${title}.md`, processedNoteContent);;
-                            new NoteElement(this.plugin, note, this);
+                                let fileTags = getTagsThroughContent(processedNoteContent)
+                                let tagFolderName = tagsToFolderName(fileTags)
+                                let hashedTagFolderName = folderNameToHashedFolderName(plugin, tagFolderName)
+
+                                filePath = `${hashedTagFolderName}/${title}`
+                                console.groupEnd()
+                            }
+                            console.log(`%cfilePath = "${filePath}"`, `color: blue`)
+
+                            plugin.ignoreNextCreate = true;
+                            const file = await this.plugin.app.vault.create(`${title}.md`, processedNoteContent);
+                            folderStructureOnModifyFile(plugin, file, `${filePath}.md`)
+                            plugin.fileMetadataList.set(`${filePath}.md`, new FileMetadataExtension(plugin, processedNoteContent, syncTemplate, title));
+
+                            new NoteElement(this.plugin, file, this);
 
 
                             console.groupEnd();
@@ -841,7 +896,242 @@ export class Scanner {
                         })
                     }
                 }
-                
+
+                menu.addSeparator();
+                //Rename Tag
+                {
+                    if(this.ownTags.length == 1 && this.negatedSearchTags.length == 0) {
+                        menu.addItem((item) => {
+                            item.setTitle("Rename Tag")
+                            item.setIcon("pen-line")
+                            item.onClick(() => {
+                                //Console Metadata
+                                {
+                                    console.groupCollapsed(`Registered Event: "Rename Tag"\n>> TagsPlus: TagScanner-UI`);
+                                    console.groupCollapsed(`%cTrace`, `color: #a0a0a0`);
+                                    console.log(`Registered on: Scanner "${this.scannerName}"`)
+                                    console.trace();
+                                    console.groupEnd();
+                                    console.groupCollapsed(`%cDescription`, `color: #a0a0a0`);
+                                    console.groupCollapsed(`Goal`)
+                                    console.log(`Change the Tag of every File from the old Tag to the new Tag.`);
+                                    console.groupEnd();
+                                    console.groupCollapsed(`Process`);
+                                    console.log(`Hiding note expander.`,
+                                        `\nGetting the user input with an Input Field`,
+                                    );
+                                    console.groupEnd();
+                                    console.groupEnd();
+                                }
+
+                                console.groupCollapsed(`Getting relevantFiles`)
+                                let relevantFiles: TFile[] = plugin.app.vault.getMarkdownFiles().filter((file) => {
+                                    console.groupCollapsed(`file.basename = "${file.basename}"`)
+                                    const fileTags = getTagsThroughMetadata(plugin, file)
+                                    console.groupCollapsed(`fileTags`)
+                                    fileTags.forEach((value, index) => console.log(`${index}: "${value}"`))
+                                    console.groupEnd();
+
+                                    let fileContainsSubtagOfScannerTag = false;
+                                    console.groupCollapsed(`getting fileContainsSubtagOfScannerTag`)
+                                    fileTags.forEach(fileTag => {
+                                        console.groupCollapsed(`fileTag = "${fileTag}`)
+                                        if(fileTag.contains(this.ownTags[0])) {
+                                            console.log(`%cfound subtag of "${this.ownTags[0]}`, `color: green`)
+                                            fileContainsSubtagOfScannerTag = true;
+                                            console.groupEnd();
+                                            return;
+                                        }
+                                        else {
+                                            console.log(`Not a subtag of "${this.ownTags[0]}"`)
+                                        }
+
+                                        console.groupEnd();
+                                    })
+                                    console.groupEnd()
+                                    console.log(`%fileContainsSubtagOfScannerTag = ${fileContainsSubtagOfScannerTag}`, `color: blue`)
+
+                                    console.groupEnd()
+                                    return fileContainsSubtagOfScannerTag;
+                                })
+                                console.groupEnd();
+                                console.groupCollapsed(`relevantFiles`)
+                                relevantFiles.forEach((value, index) => console.log(`${index}: "${value.basename}"`))
+                                console.groupEnd();
+
+                                if(relevantFiles.length == 0) {
+                                    new Notice(`No files contain the Tag: "${this.ownTags[0]}!`)
+                                    console.groupEnd()
+                                    return
+                                }
+
+                                this.expanderForNotesEl.hide();
+                                const inputField = createInputField(this.headerEl, this.tagValue, TAGVALUE_FORMAT, true, () => {
+                                    //Console Metadata
+                                    {
+                                        console.groupCollapsed(`%cRegistered Event: "Rename Tag":`, `color: orange`,`newTagNameInputHandler(newTagName: "${inputField.value})\n>> TagsPlus: TagScanner-UI`)
+                                        console.groupCollapsed(`%cTrace`, `color: #a0a0a0`);
+                                        console.trace();
+                                        console.groupEnd();
+                                        console.groupCollapsed(`%cDescription`, `color: #a0a0a0`);
+                                        console.groupCollapsed(`Goal`)
+                                        console.log(`Using the inputValue to rename every relevant Note`); 
+                                        console.groupEnd();
+                                        console.groupCollapsed(`Process`);
+                                        console.log(`Removing the container of the InputField, so the Scanner has room.`,+
+                                            `\nUpdate Name values and searchTags of Scanner.`,
+                                            `\nShow noteExpander with the updated text and read contents of notes.`
+                                        );
+                                        console.groupEnd();
+                                        console.groupEnd();
+                                    }
+                            
+                                    const newTagName: string = inputField.value;
+                                    const oldTagName: string = this.ownTags[0];
+                                    
+                                    this.setName(newTagName, true);
+                                    this.updateSearchTags();
+                                    
+                                    inputField.remove(); 
+                                    this.expanderForNotesEl.setText(this.scannerName);
+                                    this.expanderForNotesEl.show();
+                                    this.accessTagScannerView(view => view.saveScannerStructure())
+
+                                    let contentPromises: Promise<string>[] = [];
+                                    relevantFiles.forEach(relevantFile => contentPromises.push(plugin.app.vault.read(relevantFile)))
+                                    Promise.allSettled(contentPromises).then(settledContentPromises => contentPromisesHandler.bind(this)(settledContentPromises))
+    
+                                    console.log(`%cWaiting for: contentPromises...`, `color: orange`)
+
+                                    console.groupEnd();
+
+                                    function contentPromisesHandler(settledContentPromises: PromiseSettledResult<string>[]) {
+                                        //Console Metadata
+                                        {
+                                            console.groupCollapsed(`%cRegistered Event: "Rename Tag"`, `color: orange`, `contentPromisesHandler(settledContentPromises:...)\n>> TagsPlus: TagScanner-UI`)
+                                            console.groupCollapsed(`...`)
+                                            console.groupCollapsed(`settledContentPromises`)
+                                            console.log(settledContentPromises)
+                                            console.groupEnd()
+                                            console.groupEnd();
+                                            console.groupCollapsed(`%cTrace`, `color: #a0a0a0`);
+                                            console.trace();
+                                            console.groupEnd();
+                                            console.groupCollapsed(`%cDescription`, `color: #a0a0a0`);
+                                            console.groupCollapsed(`Goal`)
+                                            console.log(`Using the contents and the newTagName to replace the oldTags with the new and ask for modify.`); 
+                                            console.groupEnd();
+                                            console.groupCollapsed(`Process`);
+                                            console.log(``);
+                                            console.groupEnd();
+                                            console.groupEnd();
+                                        }
+                                        
+                                        let fileToSettledContentPromiseMap: Map<TFile, PromiseSettledResult<string>> = new Map()
+                                        settledContentPromises.forEach((settledContentPromise, index) => fileToSettledContentPromiseMap.set(relevantFiles[index], settledContentPromise))
+                                        console.groupCollapsed(`fileToSettledContentPromiseMap`)
+                                        console.log(fileToSettledContentPromiseMap)
+                                        console.groupEnd()
+
+                                        //Getting fileToContentMap
+                                        let fileToContentMap: Map<TFile, string> = new Map()    
+                                        fileToSettledContentPromiseMap.forEach((value, key) => {
+                                            if(value.status == "fulfilled") fileToContentMap.set(key, value.value)
+                                        })
+                                        console.groupCollapsed(`fileToContentMap`)
+                                        console.log(fileToContentMap)
+                                        console.groupEnd()
+                                        
+                                        //Getting fileToUpdatedContentMap
+                                        let fileToUpdatedContentMap: Map<TFile, string> = new Map()
+                                        console.groupCollapsed(`Getting fileToUpdatedContentMap`)
+                                        fileToContentMap.forEach((value, key) => {
+                                            console.groupCollapsed(`key: "${key.basename}" => value:...`)
+                                            console.groupCollapsed(`...`)
+                                            console.log(value)
+                                            console.groupEnd();
+                                            
+                                            let triggerForFrontmatter: RegExp = new RegExp(`  - ${oldTagName}`,"g")
+                                            let triggerForInline: RegExp = new RegExp(`#${oldTagName}`, "g")
+                                            console.log(`triggerForFrontmatter = ${triggerForFrontmatter}`)
+                                            console.log(`triggerForInline = ${triggerForInline}`)
+                                            let updatedContent = value.replaceAll(triggerForFrontmatter, `  - ${newTagName}`)
+                                            console.groupCollapsed(`updatedContent after triggerForFrontmatter`)
+                                            console.log(updatedContent)
+                                            console.groupEnd();
+                                            updatedContent = updatedContent.replaceAll(triggerForInline, `#${newTagName}`)
+
+                                            console.groupCollapsed(`%cupdatedContent`, `color:blue`)
+                                            console.log(updatedContent)
+                                            console.groupEnd();
+
+                                            fileToUpdatedContentMap.set(key, updatedContent)
+
+                                            console.groupEnd()
+                                        })
+                                        console.groupEnd();
+                                        console.groupCollapsed(`fileToUpdatedContentMap`)
+                                        console.log(fileToUpdatedContentMap)
+                                        console.groupEnd()
+
+
+                                        plugin.ignoreAllModifies = true;
+                                        let modifyPromises: Promise<void>[] = [];
+                                        console.groupCollapsed(`Updating `)
+                                        fileToUpdatedContentMap.forEach((value, key) => {
+                                            let promise = syncTemplateStructureOnModify(plugin, key, value)
+                                            /*
+                                            This updates file metadata and folderstructure, if there is a relationship between changed variables,
+                                            the function will modify the content again, in that case the funciton returns a promise, if not then
+                                            no further change was required
+                                            but the origninal file was not updated with the original change, so that is why in both cases, we need to update content.
+                                            */
+                                            if(promise) modifyPromises.push(promise)
+                                            else {
+                                                modifyPromises.push(plugin.app.vault.modify(key, value))
+                                            }
+                                        })
+
+                                        Promise.allSettled(modifyPromises).then(settledModifyPromises => modifyPromisesHandler(settledModifyPromises))
+                                        console.log(`%cWaiting for: modifyPromises...`, `color: orange`)
+                                        console.groupEnd();
+
+                                        function modifyPromisesHandler(settledModifyPromises: PromiseSettledResult<void>[]) {
+                                            //Console Metadata
+                                            {
+                                                console.groupCollapsed(`%cRegistered Event: "Rename Tag"`, `color: orange`, `modifyPromisesHandler(settledModifyPromises:...)\n>> TagsPlus: TagScanner-UI`)
+                                                console.groupCollapsed(`...`)
+                                                console.groupCollapsed(`settledModifyPromises`)
+                                                console.log(settledModifyPromises)
+                                                console.groupEnd()
+                                                console.groupEnd();
+                                                console.groupCollapsed(`%cTrace`, `color: #a0a0a0`);
+                                                console.log(`Promise from: `)
+                                                console.trace();
+                                                console.groupEnd();
+                                                console.groupCollapsed(`%cDescription`, `color: #a0a0a0`);
+                                                console.groupCollapsed(`Goal`)
+                                                console.log(``); 
+                                                console.groupEnd();
+                                                console.groupCollapsed(`Process`);
+                                                console.log(``);
+                                                console.groupEnd();
+                                                console.groupEnd();
+                                            }
+
+                                            plugin.ignoreAllModifies = false;
+
+                                            console.groupEnd();
+                                        }
+                                    }
+                                })
+                                console.log(`%cWaiting for: User Input(newTagName)...`, `color: orange`)
+
+                                console.groupEnd();
+                            })
+                        })
+                    }
+                }
 
                 menu.showAtMouseEvent(ev);
 

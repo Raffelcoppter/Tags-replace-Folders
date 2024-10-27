@@ -1,6 +1,6 @@
 import TagsPlus from "main";
 import { TFile } from "obsidian";
-import { syncTemplateStructureOnDeleteFile, syncTemplateStructureOnModify, syncTemplateStructureOnRenameFile } from "SyncTemplateManager";
+import { syncTemplateStructureOnCreateFile, syncTemplateStructureOnDeleteFile, syncTemplateStructureOnModify, syncTemplateStructureOnRenameFile } from "SyncTemplateManager";
 import { folderStructureOnDeleteFile, folderStructureOnModifyFile, getTagsThroughContent, tagsToFolderName } from "TagFolderManager";
 
 export function structureOnModifyFile(plugin: TagsPlus, file: TFile) {
@@ -54,7 +54,10 @@ export function structureOnModifyFile(plugin: TagsPlus, file: TFile) {
         }
 
 
-        syncTemplateStructureOnModify(plugin, file, content)
+        let promise = syncTemplateStructureOnModify(plugin, file, content)
+        if(promise) {
+            plugin.ignoreNextModify = true;
+        }
         //folderStructureOnModifyFile(plugin, file, content);
 
         console.groupEnd();
@@ -111,6 +114,36 @@ export function structureOnDeleteFile(plugin: TagsPlus, file: TFile) {
 
     syncTemplateStructureOnDeleteFile(plugin, file)
     folderStructureOnDeleteFile(plugin, file)
+
+    console.groupEnd();
+}
+
+export function structureOnCreateFile(plugin: TagsPlus, file: TFile) {
+    //Console Metadata
+    {
+        console.groupCollapsed(`structureOnDeleteFile(file: "${file.basename}")`);
+        console.groupCollapsed(`%cTrace`, `color: #a0a0a0`);
+        console.trace();
+        console.groupEnd();
+        console.groupCollapsed(`%cDescription`, `color: #a0a0a0`);
+        console.groupCollapsed(`Goal`)
+        console.log(`Managing every function that has something to do with the createFile event.`);
+        console.groupEnd();
+        console.groupCollapsed(`Process`);
+        console.log(`Call syncTemplateStructureOnCreateFile,`,
+        );
+        console.groupEnd();
+        console.groupEnd();
+    }
+
+    if(plugin.ignoreNextCreate) {
+        console.log(`%cignored`, `color: blue`)
+        plugin.ignoreNextCreate = false;
+        console.groupEnd();
+        return;
+    }
+
+    syncTemplateStructureOnCreateFile(plugin, file)
 
     console.groupEnd();
 }
