@@ -1,5 +1,5 @@
 import TagsPlus from "main";
-import { FrontMatterCache, Plugin, TAbstractFile, TFile, TFolder } from "obsidian";
+import { FrontMatterCache, Notice, Plugin, TAbstractFile, TFile, TFolder } from "obsidian";
 import { createHash } from "crypto";
 import { TemplateModal } from "SyncTemplateManager";
 
@@ -224,6 +224,178 @@ export async function folderStructureCleanUp(plugin: Plugin): Promise<void> {
         console.groupEnd(); //End Group: deletePromisesHandler()
     }
 }
+
+
+export function modifyFolderStructure(plugin: TagsPlus, fileToNewPathMap: Map<TFile, string>) {
+    //Console Metadata
+    {
+        console.groupCollapsed(`modifyFolderStructure(fileToNewPathMap:...)`);
+        console.groupCollapsed(`...`)
+        console.groupCollapsed(`fileToNewPathMap`)
+        fileToNewPathMap.forEach((value,key) => console.log(`key: "${key.basename}" => value: "${value}"`))
+        console.groupEnd();
+        console.groupEnd();
+        console.groupCollapsed(`%cTrace`, `color: #a0a0a0`);
+        console.trace();
+        console.groupEnd();
+        console.groupCollapsed(`%cDescription`, `color: #a0a0a0`);
+        console.groupCollapsed(`Goal`)
+        console.log(``);
+        console.groupEnd();
+        console.groupCollapsed(`Process`);
+        console.log(``);
+        console.groupEnd();
+        console.groupEnd();
+    }
+
+    //Getting oldTagFolders             these are relevant for deletion, if at the end an old tag folder is empty -> delete
+    let oldTagFolders: TFolder[] = []
+    {
+        console.groupCollapsed(`Getting oldTagFolders`)
+        fileToNewPathMap.forEach((value, file) => {
+            console.groupCollapsed(`file = "${file}"`)
+            if(file.parent) {
+                console.log(`file.parent = "${file.parent.name}"`)
+                oldTagFolders.push(file.parent)
+            }
+            else {
+                console.log(`file.parent is null, no parent`)
+            }
+        })
+        console.groupEnd();
+    }
+    console.groupCollapsed(`oldTagFolders`)
+    oldTagFolders.forEach((value, index) => console.log(`${index}: "${value}"`))
+    console.groupEnd();
+
+    //Getting newTagFolderNames         For creation.
+    let newTagFolderNames: string[] = []
+    {
+        console.groupCollapsed(`Getting newTagFolderNames `);
+        fileToNewPathMap.forEach((newPath, file) => {
+            console.groupCollapsed(`file.basename = "${file.basename}" => newPath = "${newPath}"`)
+            let newFileName = newPath.split("/").pop() ?? newPath;
+            console.log(`newFileName = "${newFileName}"`)
+            
+            let newTagFolderName: string = newPath.slice(0, newPath.length - newFileName.length)
+            console.log(`newTagFolderName = "${newTagFolderName}"`)
+
+            if(newTagFolderNames.contains(newTagFolderName)) {
+                console.log(`newTagFolderName is already inside the array, dont push`)
+            }
+            else {
+                console.log(`Array does not contain folder name`)
+
+                if(plugin.app.vault.getFolderByPath(newTagFolderName)) {
+                    console.log(`But folder already exists, dont push`)
+                }
+                else {
+                    console.log(`And folder doesnt exist yet, push`)
+                    newTagFolderNames.push(newTagFolderName)
+                }
+
+            }
+            console.groupEnd()
+        })
+        console.groupEnd();
+    }
+    console.groupCollapsed(`%cnewTagFolderNames`, `color: blue`)
+    newTagFolderNames.forEach((value, index) => console.log(`${index}: "${value}"`))
+    console.groupEnd()
+
+    
+
+    let folderPromises: Promise<TFolder>[] = [];
+    newTagFolderNames.forEach(newTagFolderName => folderPromises.push(plugin.app.vault.createFolder(newTagFolderName)))
+    Promise.allSettled(folderPromises).then(settledFolderPromises => folderPromisesHandler(settledFolderPromises))
+
+    console.groupEnd();
+
+    function folderPromisesHandler(settledFolderPromises: PromiseSettledResult<TFolder>[]) {
+        //Console Metadata
+        {
+            console.groupCollapsed(`%cmodifyFolderStructure`, `color: orange`, `folderPromisesHandler(settledFolderPromises:...)\n>> TagsPlus`)
+            console.groupCollapsed(`...`)
+            console.groupCollapsed(`settledFolderPromises`)
+            console.log(settledFolderPromises)
+            console.groupEnd()
+            console.groupEnd()
+            console.groupCollapsed(`%cTrace`, `color: #a0a0a0`);
+            console.log(`Promise from: `)
+            console.trace();
+            console.groupEnd();
+            console.groupCollapsed(`%cDescription`, `color: #a0a0a0`);
+            console.groupCollapsed(`Goal`)
+            console.log(``); 
+            console.groupEnd();
+            console.groupCollapsed(`Process`);
+            console.log(``);
+            console.groupEnd();
+            console.groupEnd();
+        }
+
+        let rejectedFolderPromises = settledFolderPromises.filter(settledFolderPromise => settledFolderPromise.status == "rejected")
+
+        if(rejectedFolderPromises.length != 0) {
+            new Notice(`Error, a folder wich is needed could not be created.`)
+            console.groupCollapsed(`rejectedFolderPromises`)
+            console.log(rejectedFolderPromises)
+            console.groupEnd();
+            console.groupEnd()
+            return;
+        }
+        let fulfilledFolderPromises = settledFolderPromises.filter(settledFolderPromise => settledFolderPromise.status == "fulfilled") // Wich should just be the same promises, just for the compiler
+        let createdFolders = fulfilledFolderPromises.map(fulfilledFolderPromise => fulfilledFolderPromise.value.name)
+        console.groupCollapsed(`%ccreatedFolders`, `color: blue`)
+        createdFolders.forEach((value, index) => console.log(`${index}: "${value}"`))
+        console.groupEnd();
+
+        plugin.ignoreAllRenames = true;
+        let renamePromises: Promise<void>[] = []
+        fileToNewPathMap.forEach((newPath, file) => renamePromises.push(plugin.app.vault.rename(file, newPath)))
+        Promise.allSettled(renamePromises).then(settledRenamePromises => renamePromisesHandler(settledRenamePromises))
+
+        console.groupEnd();
+
+        function renamePromisesHandler(settledRenamePromises: PromiseSettledResult<void>[]) {
+            //Console Metadata
+            {
+                console.groupCollapsed(`%cmodifyFolderStructure`, `color: orange`, `renamePromisesHandler(settledRenamePromises:...)\n>> TagsPlus`)
+                console.groupCollapsed(`...`)
+                console.groupCollapsed(`settledRenamePromises`)
+                console.log(settledRenamePromises)
+                console.groupEnd()
+                console.groupEnd()
+                console.groupCollapsed(`%cTrace`, `color: #a0a0a0`);
+                console.log(`Promise from: `)
+                console.trace();
+                console.groupEnd();
+                console.groupCollapsed(`%cDescription`, `color: #a0a0a0`);
+                console.groupCollapsed(`Goal`)
+                console.log(``); 
+                console.groupEnd();
+                console.groupCollapsed(`Process`);
+                console.log(``);
+                console.groupEnd();
+                console.groupEnd();
+            }
+
+            let rejectedRenamePromises = settledRenamePromises.filter(settledRenamePromise => settledRenamePromise.status == "rejected")
+
+            if(rejectedRenamePromises.length != 0) {
+                new Notice(`Error, a rename operation failed.`)
+                console.groupCollapsed(`rejectedRenamePromises`)
+                console.log(rejectedRenamePromises)
+                console.groupEnd();
+            }
+
+            plugin.ignoreAllRenames = false;
+
+            console.groupEnd()
+        }
+    }
+}
+
 
 //Watchers
 export function folderStructureOnModifyFile(plugin: TagsPlus, file: TFile, newPath: string): void {
