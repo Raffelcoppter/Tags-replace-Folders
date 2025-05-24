@@ -1,7 +1,7 @@
 import TagsPlus from "main";
 import { TFile } from "obsidian";
 import { syncTemplateStructureOnCreateFile, syncTemplateStructureOnDeleteFile, syncTemplateStructureOnModify, syncTemplateStructureOnRenameFile } from "SyncTemplateManager";
-import { folderStructureOnDeleteFile, folderStructureOnModifyFile, getTagsThroughContent, tagsToFolderName } from "TagFolderManager";
+import { folderStructureOnDeleteFile, folderStructureOnModifyFile, getTagsThroughContent, modifyFolderStructure, tagsToFolderName } from "TagFolderManager";
 
 export function structureOnModifyFile(plugin: TagsPlus, file: TFile) {
     //Console Metadata
@@ -54,11 +54,15 @@ export function structureOnModifyFile(plugin: TagsPlus, file: TFile) {
         }
 
 
-        let promise = syncTemplateStructureOnModify(plugin, file, content)
-        if(promise) {
+        let pendingUpdates = syncTemplateStructureOnModify(plugin, file, content)
+        if(pendingUpdates[0]) {
             plugin.ignoreNextModify = true;
         }
-        //folderStructureOnModifyFile(plugin, file, content);
+        if(pendingUpdates[1]) {
+            let fileToNewPathMap: Map<TFile, string> = new Map();
+            fileToNewPathMap.set(pendingUpdates[1][0], pendingUpdates[1][1])
+            modifyFolderStructure(plugin, fileToNewPathMap)
+        }
 
         console.groupEnd();
     }
@@ -80,9 +84,14 @@ export function structureOnRenameFile(plugin: TagsPlus, file: TFile, oldPath: st
         console.groupEnd();
         console.groupEnd();
     }
+    if(plugin.ignoreAllRenames) {
+        console.log(`%cignored, (ingoreAllRenames)`, `color: blue`)
+        console.groupEnd();
+        return;
+    }
 
     if(plugin.ignoreNextRename) {
-        console.log(`%cignored`, `color: blue`)
+        console.log(`%cignored (ignoreNextRename)`, `color: blue`)
         plugin.ignoreNextRename = false;
         console.groupEnd();
         return;

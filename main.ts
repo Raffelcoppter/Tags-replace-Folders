@@ -5,6 +5,7 @@ import { resOnCreateFile } from 'Ressourcemanagement';
 import { FileMetadataExtension, loadFileMetadata, loadSyncTemplateMetadata, SyncTemplateMetadataExtension, syncTemplateStructureOnCreateFile, setStatusBar, syncTemplateStructureOnModify } from 'SyncTemplateManager';
 import { folderStructureCreate, folderStructureOnCreateFile, folderStructureOnDeleteFile, folderStructureOnModifyFile } from 'TagFolderManager';
 import { TagScannerView, VIEW_TYPE_TAGSCANNER } from 'TagScannerView';
+import { CombinedPluginSettingsTab, createFunction } from 'Settings'
 
 
 export default class TagsPlus extends Plugin {
@@ -40,8 +41,8 @@ export default class TagsPlus extends Plugin {
 
 		addCommands(this)
 
-		//await this.loadSettings();
-		//this.addSettingTab(new SampleSettingTab(this.app, this));
+		await this.loadSettings();
+		this.addSettingTab(new CombinedPluginSettingsTab(this.app, this));
 		this.registerView(VIEW_TYPE_TAGSCANNER, (leaf) => new TagScannerView(leaf, this))
 		this.app.workspace.onLayoutReady(this.onLayoutReady.bind(this));
 		
@@ -128,16 +129,77 @@ export default class TagsPlus extends Plugin {
 	}
 	
 	async loadSettings() {
-		this.combinedPluginSettings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
-	}
+		//Console Metadata
+		{
+			console.groupCollapsed(`loadSettings()\n>> main`);
+			console.groupCollapsed(`%cTrace`, `color: #a0a0a0`);
+			console.trace();
+			console.groupEnd();
+			console.groupCollapsed(`%cDescription`, `color: #a0a0a0`);
+			console.groupCollapsed(`Goal`)
+			console.log(``);
+			console.groupEnd();
+			console.groupCollapsed(`Process`); 
+			console.log(``);
+			console.groupEnd();
+			console.groupEnd();
+		}
+		const loaded = await this.loadData();
+		const rawSettings = {
+			...loaded,
+		  };
+	  
+		console.groupCollapsed("raw data")
+		console.log(rawSettings)
+		console.groupEnd()
+
+		const customFuncStringsListFixed = new Map<string, string>(Object.entries(rawSettings.customFuncStringsList ?? {}));
+		console.groupCollapsed("customFuncStringsListFixed")
+		console.log(customFuncStringsListFixed)
+		console.groupEnd()
+
+		const customFuncList = new Map()
+		customFuncStringsListFixed.forEach((rawString, funcName)=> {
+			customFuncList.set(funcName, createFunction(rawString))
+		})
+
+		this.combinedPluginSettings = {
+			customFuncStringsList: customFuncStringsListFixed,
+			customFuncList: customFuncList
+		}
+		console.groupCollapsed("%ccombinedPluginSettings", "color: blue")
+		console.log(this.combinedPluginSettings)
+		console.groupEnd()
+		
+		console.groupEnd()
+
+	  }
 
 	async saveSettings() {
-		await this.saveData(this.combinedPluginSettings);
+		//Console Metadata
+		{
+			console.groupCollapsed(`saveSettings()\n>> main`);
+			console.groupCollapsed(`%cTrace`, `color: #a0a0a0`);
+			console.trace();
+			console.groupEnd();
+			console.groupCollapsed(`%cDescription`, `color: #a0a0a0`);
+			console.groupCollapsed(`Goal`)
+			console.log(``);
+			console.groupEnd();
+			console.groupCollapsed(`Process`); 
+			console.log(``);
+			console.groupEnd();
+			console.groupEnd();
+		}
+		console.log(this.combinedPluginSettings)
+		const settingsToSave = {
+			customFuncStringsList: Object.fromEntries(this.combinedPluginSettings.customFuncStringsList),
+		  };
+		await this.saveData(settingsToSave);
+
+		console.groupEnd()
 	}
 	
-
-
-
 
 	private async activateView() {
 		let leaf: WorkspaceLeaf | null = null
@@ -151,37 +213,20 @@ export default class TagsPlus extends Plugin {
 
 	}
 
-
-
 }
 
 interface CombinedPluginSettings {
-	structure1: string;
+	customFuncList: Map<string, (inputString: string, ...args: any[]) => any>
+	customFuncStringsList: Map<string, string>
 }
 
 const DEFAULT_SETTINGS: CombinedPluginSettings = {
-	structure1: ''
+	customFuncList: new Map() as Map<string, (inputString: string, ...args: any[]) => any>,
+	customFuncStringsList: new Map() as Map<string, string>
 }
 
-class SampleSettingTab extends PluginSettingTab {
-	combinedPlugin: TagsPlus;
 
-	constructor(app: App, combinedPlugin: TagsPlus) {
-		super(app, combinedPlugin);
-		this.combinedPlugin = combinedPlugin;
-	}
 
-	display(): void {
-		const {containerEl} = this;
-
-		containerEl.empty();
-
-		new Setting(containerEl)
-			.setName("Activate R Structure for: ")
-			.addTextArea((input) => "")
-
-	}
-}
 
 
 

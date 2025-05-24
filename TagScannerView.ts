@@ -127,6 +127,8 @@ export class TagScannerView extends ItemView {
         console.log(`Added EventListener: "Create Root-Scanner"`);
         console.groupEnd();
 
+        this.loadSearchHeader()
+
         this.loadScannerStructure();
         console.groupEnd();
     }
@@ -222,6 +224,12 @@ export class TagScannerView extends ItemView {
         console.groupEnd();
         console.timeEnd(`loadScannerStructure`)
     }
+
+
+    private loadSearchHeader(): void {
+
+    }
+
 
     private stringLogicToBool(string: string, boolValues: {[key: string]: boolean}): boolean {
 		//Console Metadata

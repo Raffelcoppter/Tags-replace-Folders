@@ -253,7 +253,7 @@ export function modifyFolderStructure(plugin: TagsPlus, fileToNewPathMap: Map<TF
     {
         console.groupCollapsed(`Getting oldTagFolders`)
         fileToNewPathMap.forEach((value, file) => {
-            console.groupCollapsed(`file = "${file}"`)
+            console.groupCollapsed(`file = "${file.basename}"`)
             if(file.parent) {
                 console.log(`file.parent = "${file.parent.name}"`)
                 oldTagFolders.push(file.parent)
@@ -261,6 +261,7 @@ export function modifyFolderStructure(plugin: TagsPlus, fileToNewPathMap: Map<TF
             else {
                 console.log(`file.parent is null, no parent`)
             }
+            console.groupEnd()
         })
         console.groupEnd();
     }
@@ -278,6 +279,7 @@ export function modifyFolderStructure(plugin: TagsPlus, fileToNewPathMap: Map<TF
             console.log(`newFileName = "${newFileName}"`)
             
             let newTagFolderName: string = newPath.slice(0, newPath.length - newFileName.length)
+            if(newTagFolderName) newTagFolderName = newTagFolderName.slice(0, newTagFolderName.length - 1)
             console.log(`newTagFolderName = "${newTagFolderName}"`)
 
             if(newTagFolderNames.contains(newTagFolderName)) {
@@ -285,6 +287,8 @@ export function modifyFolderStructure(plugin: TagsPlus, fileToNewPathMap: Map<TF
             }
             else {
                 console.log(`Array does not contain folder name`)
+
+
 
                 if(plugin.app.vault.getFolderByPath(newTagFolderName)) {
                     console.log(`But folder already exists, dont push`)
@@ -308,6 +312,7 @@ export function modifyFolderStructure(plugin: TagsPlus, fileToNewPathMap: Map<TF
     let folderPromises: Promise<TFolder>[] = [];
     newTagFolderNames.forEach(newTagFolderName => folderPromises.push(plugin.app.vault.createFolder(newTagFolderName)))
     Promise.allSettled(folderPromises).then(settledFolderPromises => folderPromisesHandler(settledFolderPromises))
+    console.log(`%cWaiting for: folderPromises...`, `color: orange`)
 
     console.groupEnd();
 
@@ -354,6 +359,8 @@ export function modifyFolderStructure(plugin: TagsPlus, fileToNewPathMap: Map<TF
         let renamePromises: Promise<void>[] = []
         fileToNewPathMap.forEach((newPath, file) => renamePromises.push(plugin.app.vault.rename(file, newPath)))
         Promise.allSettled(renamePromises).then(settledRenamePromises => renamePromisesHandler(settledRenamePromises))
+        console.log(`%cWaiting for: renamePromises...`, `color: orange`)
+
 
         console.groupEnd();
 

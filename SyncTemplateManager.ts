@@ -290,7 +290,7 @@ export function syncTemplateStructureOnCreateFile(plugin: TagsPlus, file: TFile)
 
             let fromValToContentMap: Map<string, string> = new Map()
             fromValToContentMap.set("notizName", fileBasename)
-            let processedNoteContent = getProcessedNoteContentFromRawInputs(fromValToContentMap, syncTemplateMetadata)
+            let processedNoteContent = getProcessedNoteContentFromRawInputs(plugin, fromValToContentMap, syncTemplateMetadata)
             console.groupCollapsed(`%cprocessedNoteContent`, `color: blue`)
             console.log(processedNoteContent)
             console.groupEnd();
@@ -329,14 +329,17 @@ export function syncTemplateStructureOnCreateFile(plugin: TagsPlus, file: TFile)
 }
 
 
-export function syncTemplateStructureOnModify(plugin: TagsPlus, file: TFile, newFileContent: string): Promise<void> | null {
+export function syncTemplateStructureOnModify(plugin: TagsPlus, file: TFile, newFileContent: string): [Promise<void> | null, [file: TFile, newPath: string] | null] {
     //Console Metadata
     {
-        console.groupCollapsed(`syncTemplateStructureOnModify(file: "${file.basename}", newFileContent: ...,\nnewTagFolderName: ...)`);
+        console.groupCollapsed(`syncTemplateStructureOnModify(file: "${file.basename}"..., newFileContent: ...,\nnewTagFolderName: ...)`);
         console.groupCollapsed(`...`)
         console.groupCollapsed(`newFileContent:`)
         console.log(newFileContent)
         console.groupEnd()
+        console.groupCollapsed(`file`)
+        console.log(file)
+        console.groupEnd();
         console.groupEnd();
         console.groupCollapsed(`%cTrace`, `color: #a0a0a0`);
         console.trace();
@@ -367,7 +370,7 @@ export function syncTemplateStructureOnModify(plugin: TagsPlus, file: TFile, new
                 console.log(`Look inside the list.`);
                 console.groupCollapsed(`plugin.fileMetadataList`)
                 console.log(plugin.fileMetadataList)
-                console.groupCollapsed();
+                console.groupEnd();
                 console.groupEnd();
                 console.group(`Consequence`)
                 console.log(`No comparison to old content possible!`)
@@ -378,7 +381,7 @@ export function syncTemplateStructureOnModify(plugin: TagsPlus, file: TFile, new
                 console.groupEnd();
                 console.warn(`Error in: syncTemplateStructureOnModify(file: "${file.basename}", ...)`)
             }
-            return null;
+            return [null, null];
         }
         syncTemplateMetadata = plugin.syncTemplateMetadataList.get(oldFileMetadata.syncTemplate.path)
         if(!syncTemplateMetadata) {
@@ -397,7 +400,7 @@ export function syncTemplateStructureOnModify(plugin: TagsPlus, file: TFile, new
                 console.groupEnd();
                 console.warn(`Error in: syncTemplateStructureOnModify(file: "${file.basename}")`)
             }
-            return null;
+            return [null, null];
         }
 
         console.log(`%cNo errors`, `color: green`)
@@ -479,7 +482,7 @@ export function syncTemplateStructureOnModify(plugin: TagsPlus, file: TFile, new
 
 
         //This block jus applies the relationships and logs the results in shape of a Map and the keyArray
-        let changedRelationshipToValToContentMap = applyRelationships(changedRelationshipVariableToContentMap, syncTemplateMetadata.relationships)
+        let changedRelationshipToValToContentMap = applyRelationships(plugin, changedRelationshipVariableToContentMap, syncTemplateMetadata.relationships)
         if(changedRelationshipToValToContentMap == "Overlap-Error") {
             //Warning Log
             {
@@ -591,19 +594,19 @@ export function syncTemplateStructureOnModify(plugin: TagsPlus, file: TFile, new
         console.groupEnd(); 
     }
 
+    let returnPair: [Promise<void> | null, [TFile, string] | null] = [null, null]
     if(adressChanged) {
         console.log(`Request: folderStructure change`)
-        folderStructureOnModifyFile(plugin, file, processedFileMetadataAdress)
+        returnPair[1] = [file, processedFileMetadataAdress]
     }
 
     if(contentChanged) {
         console.log(`Request: content modify`)
-        return(plugin.app.vault.modify(file, processedFileContent))
+        returnPair[0] = plugin.app.vault.modify(file, processedFileContent)
     }
-
     
     console.groupEnd();
-    return null;
+    return returnPair;
 }
 
 export function syncTemplateStructureOnRenameFile(plugin: TagsPlus, file: TFile, oldFilePath: string) {
@@ -709,7 +712,7 @@ export function syncTemplateStructureOnRenameFile(plugin: TagsPlus, file: TFile,
     {
         let notizNameToContentMap: Map<string, string> = new Map();
         notizNameToContentMap.set(`notizName`, file.basename);
-        let changedRelationshipVariableToContentMap = applyRelationships(notizNameToContentMap, syncTemplateMetadata.relationships)
+        let changedRelationshipVariableToContentMap = applyRelationships(plugin, notizNameToContentMap, syncTemplateMetadata.relationships)
         if(changedRelationshipVariableToContentMap == "Overlap-Error") {
             //Warning Log
             {
@@ -799,6 +802,7 @@ export function syncTemplateStructureOnDeleteFile(plugin: TagsPlus, file: TFile)
 }
 
 //Types
+/* Old types, replaced through custom functions
 type replaceAll = {
     type: "replaceAll",
     old: RegExp,
@@ -808,12 +812,15 @@ type attachOrDetachString = {
     type: "attachToFront" | "detachFromFront" | "attachToBack" | "detachFromBack"
     string: string
 }
-
-
 type command = replaceAll | attachOrDetachString
+*/
+
+
+
+
 //Event Watcher Helpers
 
-export function applyRelationships(fromValToContentMap: Map<string, string>, relationships: {from: string, to: string, rules: command[]}[]): Map<string, string> | "Overlap-Error" { 
+export function applyRelationships(plugin: TagsPlus, fromValToContentMap: Map<string, string>, relationships: {from: string, to: string, funcName: string, addArgs:any []}[]): Map<string, string> | "Overlap-Error" { 
     //Console Metadata
     {
         console.groupCollapsed(`applyRelationships(fromValNameAndContent: ..., relationships: ...)`);
@@ -868,7 +875,7 @@ export function applyRelationships(fromValToContentMap: Map<string, string>, rel
                     console.groupCollapsed(`...`)
                     console.dir(relevantRelationship)
                     console.groupEnd();
-                    toValToNewContentMap.set(relevantRelationship.to, applyRelationship(content, relevantRelationship));    //content is the content from the current fromVal
+                    toValToNewContentMap.set(relevantRelationship.to, applyRelationship(plugin, content, relevantRelationship));    //content is the content from the current fromVal
                     console.groupEnd();
                 })
                 console.groupEnd();
@@ -950,10 +957,10 @@ export function applyRelationships(fromValToContentMap: Map<string, string>, rel
     return combinedMap;
 }
 
-function applyRelationship(fromVal: string, relationship: {from: string, to: string, rules: command[]}): string {
+function applyRelationship(plugin: TagsPlus, fromVal: string, relationship: {from: string, to: string, funcName: string, addArgs: any[]}): string {
     //Console Metadata
     {
-        console.groupCollapsed(`applyRelationship(fromVal: "${fromVal}", relationship: {from: "${relationship.from}", to: "${relationship.to}"})`);
+        console.groupCollapsed(`applyRelationship(fromVal: "${fromVal}",\n relationship: {from: "${relationship.from}", to: "${relationship.to}"}), funcName: "${relationship.funcName}`);
         console.groupCollapsed(`%cTrace`, `color: #a0a0a0`);
         console.trace();
         console.groupEnd();
@@ -967,59 +974,28 @@ function applyRelationship(fromVal: string, relationship: {from: string, to: str
         console.groupEnd();
     }
 
-    console.groupCollapsed(`rules`)
-    console.log(relationship.rules)
-    console.groupEnd();
-
-    //Applying each rule
-    let toVal = fromVal;
-    {
-        console.groupCollapsed(`Applying each rule`)
-    
-        relationship.rules.forEach(rule => {
-            console.groupCollapsed(rule)
-            console.log(`before: toVal = "${toVal}"`)
-            if(rule.type == "replaceAll") {
-                console.log(`type: replaceAll`)
-                toVal = toVal.replaceAll(rule.old, rule.new)
-            }
-            else if(rule.type == "attachToFront") {
-                console.log(`type: attachToFront`)
-                toVal = `${rule.string}${toVal}`
-            }
-            else if(rule.type == "detachFromFront") {
-                console.log(`type: detachFromFront`)
-                if(toVal.slice(0, rule.string.length) == rule.string) {
-                    console.log(`%ctoVal contains the to be detatched string at the front`, `color: green`)
-                    toVal = toVal.slice(rule.string.length)
-                }
-                else {
-                    console.log(`%ctoVal does not contain the to be detatched string at the front`, `color: red`)
-                }
-            }
-            else if(rule.type == "attachToBack") {
-                console.log(`type: attachToBack`)
-                toVal = `${toVal}${rule.string}`
-            }
-            else if(rule.type == "detachFromBack") {
-                console.log(`type: detachFromBack`)
-                if(toVal.slice(toVal.length - rule.string.length) == rule.string) {
-                    console.log(`%ctoVal contains the to be detatched string at the front`, `color: green`)
-                    toVal = toVal.slice(0, toVal.length - rule.string.length)
-                }
-                else {
-                    console.log(`%ctoVal does not contain the to be detatched string at the front`, `color: red`)
-                }
-            }
-
-            console.log(`after: toVal = "${toVal}"`)
-            
+    let toVal= ""
+    let func = plugin.combinedPluginSettings.customFuncList.get(relationship.funcName)
+    if(!func) {
+        //Warning Log
+        {
+            console.groupCollapsed(`%cWarning: func "${relationship.funcName}" not found`, `color: red`);
+            console.group(`Fix`)
+            console.log()
             console.groupEnd();
-        })
-        console.groupEnd();
+            console.group(`Consequence`)
+            console.log()
+            console.groupEnd();
+            console.groupEnd()
+            console.groupEnd();
+            console.warn(`Error in: `)
+        }
+        return fromVal
     }
-    
-    console.log(`%ctoVal = "${toVal}"`, `color: blue`);
+
+    toVal = func(fromVal, ...relationship.addArgs)
+    console.log(`toVal = "${toVal}"`)
+
     console.groupEnd();
 
     return toVal
@@ -1157,7 +1133,7 @@ export function combineMaps(prioMap: Map<string, string>, map: Map<string, strin
     return combinedMap;    
 }
 
-export function getProcessedNoteContentFromRawInputs(fromValToContentMap: Map<string, string>, syncTemplateMetadata: SyncTemplateMetadataExtension): string {
+export function getProcessedNoteContentFromRawInputs(plugin: TagsPlus, fromValToContentMap: Map<string, string>, syncTemplateMetadata: SyncTemplateMetadataExtension): string {
     //Console Metadata
     {
         console.groupCollapsed(`getProcessedNoteContentFromRawInputs(fromValToContentMap:..., syncTemplateMetadata:...)`);
@@ -1190,7 +1166,7 @@ export function getProcessedNoteContentFromRawInputs(fromValToContentMap: Map<st
     }
     let processedNoteContent: string;
 
-    let toValToContentMap = applyRelationships(fromValToContentMap, syncTemplateMetadata.relationships)
+    let toValToContentMap = applyRelationships(plugin, fromValToContentMap, syncTemplateMetadata.relationships)
     if(toValToContentMap == "Overlap-Error") {
         //Warning Log
         {
@@ -1379,7 +1355,7 @@ export class SyncTemplateMetadataExtension {
     //regExConfiguration: {[key: string]: RegExp} = {}
     contentVariables: string[] = [];
     regEx: RegExp | null;
-    relationships: {from: string, to: string, rules: command[]}[] = [];
+    relationships: {from: string, to: string, funcName: string, addArgs: any[]}[] = [];
     relationshipVariables: string[] = [];
 
     constructor(plugin: TagsPlus, syncTemplateContent: string, syncTemplateBaseName: string) {
@@ -1883,6 +1859,176 @@ export class SyncTemplateMetadataExtension {
             console.groupEnd();
             console.groupEnd();
         }
+        let returnArray: {from: string, to: string, funcName: string, addArgs: any[]}[] = [];
+
+        //Getting relationshipStrings
+        let relationshipRawStrings: string[] = [];
+        {
+            console.groupCollapsed(`Getting relationshipRawStrings`)
+
+            const relationshipsBlockRegEx = /(?<=!!\n)[\w\W]*(?=\n!>)/g
+
+            let relationshipsBlockMatch = content.match(relationshipsBlockRegEx)
+            if(!relationshipsBlockMatch) {
+                //Warning Log
+                {
+                    console.groupCollapsed(`%cParse-Warning: No valid relationshipBlock`, `color: red`);
+                    console.group(`Fix`)
+                    console.log(`Check Syntax on "${this.syncTemplateBaseName}"`)
+                    console.groupEnd();
+                    console.group(`Consequence`)
+                    console.log(`Relationships cant be read, just means that if`,
+                        `\nthere are relationship configurations, it cant be read!`
+                    )
+                    console.groupEnd();
+                    console.groupEnd()
+                    console.groupEnd();
+                    console.warn(`Error in: Getting relationshipRawStrings`)
+                    console.groupEnd();
+                    console.warn(`Error in: parseRelationships()`)
+                }
+                return;
+            }
+            let relationshipsBlock: string = relationshipsBlockMatch[0];
+    
+            console.groupCollapsed(`relationshipsBlock`)
+            console.log(relationshipsBlock)
+            console.groupEnd();
+    
+            relationshipRawStrings = relationshipsBlock.replaceAll(`\n`, ``).split(`;`).filter(singleLine => singleLine);
+            console.groupEnd();
+        }
+        console.groupCollapsed(`relationshipStrings`)
+        relationshipRawStrings.forEach((value, index) => console.log(`${index}: "${value}"`))
+        console.groupEnd();
+    
+
+        console.groupCollapsed(`Parsing relationshipStrings`)
+        relationshipRawStrings.forEach((relationshipRawString, index) => {
+            console.groupCollapsed(`relationshipString = "${relationshipRawString}"`)
+            
+            const relationshipRawStringFormat: RegExp = /^[\w]+-->[\w]+\(([\w"]+, *)*([\w"]+)?\)-->[\w]+$/
+            if(!relationshipRawStringFormat.test(relationshipRawString)) {
+                //Warning Log
+                {
+                    console.groupCollapsed(`%cParse-Warning: "${relationshipRawString}" is not correctly formatted!`, `color: red`);
+                    console.group(`Fix`)
+                    console.log(`Check Syntax`)
+                    console.groupEnd();
+                    console.group(`Consequence`)
+                    console.log(`"${relationshipRawString}" will not be parsed!`)
+                    console.groupEnd();
+                    console.groupEnd()
+                    console.groupEnd();
+                    console.warn(`Error in: "relationshipString = "${relationshipRawString}""`)
+                }
+                return
+            }
+
+
+            let seperation: [string, string, string] = relationshipRawString.split(`-->`) as [string, string, string]
+            console.groupCollapsed(`seperation`)
+            seperation.forEach((value, index) => console.log(`${index}: "${value}"`))
+            console.groupEnd();
+            let fromVal: string = seperation[0]
+            let toVal: string = seperation[2]
+
+            //Parsin func and args
+            let funcName: string;
+            let addArgs: any[] = []
+            {
+                console.groupCollapsed("Parsin func and args")
+                let rawFuncString: string = seperation[1]
+                console.log("rawFuncString = " + rawFuncString)
+                let funcparse: RegExp = /(\w+)\((.*)\)/
+                let funcStringMatch = rawFuncString.match(funcparse)
+                if(!funcStringMatch || !funcStringMatch[1] || !funcStringMatch[2]) {
+                    //Warning Log
+                    {
+                        console.groupCollapsed(`%cWarning: no regex match for a function`, `color: red`);
+                        console.group(`Fix`)
+                        console.log()
+                        console.groupEnd();
+                        console.group(`Consequence`)
+                        console.log()
+                        console.groupEnd();
+                        console.groupEnd()
+                        console.groupEnd();
+                        console.warn(`Error in: Parsin func and args`)
+                    }
+                    return
+                }
+
+                addArgs = funcStringMatch[2].split(",").map(val => parseArg(val))
+
+                funcName = funcStringMatch[1]
+                
+                console.log("funcName: "+funcName)
+                console.log("args:")
+                console.log(addArgs)
+
+                console.groupEnd()
+            }
+            
+
+            //Updating RelationshipVariables
+            {
+                console.groupCollapsed(`Updating RelationshipVariables`)
+                if(!this.relationshipVariables.contains(fromVal)){
+                    console.log(`%c"${toVal}" was not added yet.`, `color: blue`)
+                    this.relationshipVariables.push(fromVal)
+                }
+                else console.log(`"${fromVal} is already inside relationshipVariables`)
+                if(!this.relationshipVariables.contains(toVal)){ 
+                    console.log(`%c"${toVal}" was not added yet.`, `color: blue`)
+                    this.relationshipVariables.push(toVal)
+                }
+                else console.log(`"${fromVal} is already inside relationshipVariables`)
+
+                console.groupEnd();
+            }
+
+
+            returnArray.push({
+                from: fromVal,
+                to: toVal,
+                funcName: funcName,
+                addArgs: addArgs
+            })
+                
+            console.groupEnd()
+        })
+        console.groupEnd();
+
+
+        console.groupCollapsed(`relationshipVariables`)
+        this.relationshipVariables.forEach((value, index) => console.log(`${index}: "${value}"`))
+        console.groupEnd();
+
+        console.groupCollapsed(`returnArray`)
+        console.log(returnArray)
+        console.groupEnd();
+
+        this.relationships = returnArray;
+        console.groupEnd();
+
+    }
+    /*parseRelationships(content: string): void {
+        //Console Metadata
+        {
+            console.groupCollapsed(`parseRelationships() >> SyncTemplateManager`);
+            console.groupCollapsed(`%cTrace`, `color: #a0a0a0`);
+            console.trace();
+            console.groupEnd();
+            console.groupCollapsed(`%cDescription`, `color: #a0a0a0`);
+            console.groupCollapsed(`Goal`)
+            console.log(`Parsing the second Configuration Block into relationships`);
+            console.groupEnd();
+            console.groupCollapsed(`Process`);
+            console.log(``);
+            console.groupEnd();
+            console.groupEnd();
+        }
         let returnArray: {from: string, to: string, rules: command[]}[] = [];
 
         //Getting relationshipStrings
@@ -2077,7 +2223,7 @@ export class SyncTemplateMetadataExtension {
         this.relationships = returnArray;
         console.groupEnd();
 
-    }
+    }*/
     buildContents(content: string): void {
         //Console Metadata
         {
@@ -2874,5 +3020,40 @@ export function stringIntoRegExString(string: string): string {
     console.groupEnd();
     return regExCompatibleString;
 }
+
+export function parseArg(arg: string): string | number | boolean | RegExp | null {
+    // String
+    if (/^['"].*['"]$/.test(arg)) {
+      return arg.slice(1, -1);
+    }
+  
+    // RegExp literal (z. B. /abc/i oder /\d+/g)
+    if (/^\/.*\/[gimsuy]*$/.test(arg)) {
+      const regexParts = arg.match(/^\/(.*)\/([gimsuy]*)$/);
+      if (regexParts) {
+        const [, pattern, flags] = regexParts;
+        return new RegExp(pattern, flags);
+      }
+    }
+  
+    // Number
+    if (/^\d+(\.\d+)?$/.test(arg)) {
+      return Number(arg);
+    }
+  
+    // Boolean
+    if (arg === "true" || arg === "false") {
+      return arg === "true";
+    }
+  
+    // null
+    if (arg === "null") {
+      return null;
+    }
+  
+    // Fallback
+    return arg;
+  }
+  
 
 

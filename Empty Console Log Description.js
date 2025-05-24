@@ -8,7 +8,7 @@
     console.groupCollapsed(`Goal`)
     console.log(``);
     console.groupEnd();
-    console.groupCollapsed(`Process`);
+    console.groupCollapsed(`Process`); 
     console.log(``);
     console.groupEnd();
     console.groupEnd();

@@ -5,7 +5,7 @@ import { Menu, Notice, Plugin, TFile, TFolder } from "obsidian";
 import * as fs from "fs";
 import TagsPlus from "main";
 import { getSyncTemplate, FileMetadataExtension, SyncTemplateMetadataExtension, combineMaps, applyRelationships, applyNewContentBlocks, contentVariableRegEx, notizNameDefaultRegExp, getProcessedNoteContentFromRawInputs, syncTemplateStructureOnModify } from "SyncTemplateManager";
-import { folderNameToHashedFolderName, folderStructureOnModifyFile, getTagsThroughContent, getTagsThroughMetadata, tagsToFolderName } from "TagFolderManager";
+import { folderNameToHashedFolderName, folderStructureOnModifyFile, getTagsThroughContent, getTagsThroughMetadata, modifyFolderStructure, tagsToFolderName } from "TagFolderManager";
 import { createHash } from "crypto";
 
 
@@ -610,7 +610,7 @@ export class Scanner {
                             console.log(fromValToContentMap)
                             console.groupEnd();
                             
-                            let processedNoteContent = getProcessedNoteContentFromRawInputs(fromValToContentMap, syncTemplateMetadata)
+                            let processedNoteContent = getProcessedNoteContentFromRawInputs(plugin, fromValToContentMap, syncTemplateMetadata)
                             console.groupCollapsed(`%processedNoteContent`, `color: blue`)    
                             console.log(processedNoteContent)
                             console.groupEnd();
@@ -1077,23 +1077,29 @@ export class Scanner {
 
                                         plugin.ignoreAllModifies = true;
                                         let modifyPromises: Promise<void>[] = [];
+                                        let pendingRenames: Map<TFile, string> = new Map();
                                         console.groupCollapsed(`Updating `)
                                         fileToUpdatedContentMap.forEach((value, key) => {
-                                            let promise = syncTemplateStructureOnModify(plugin, key, value)
+                                            let pendingUpdates = syncTemplateStructureOnModify(plugin, key, value)
                                             /*
-                                            This updates file metadata and folderstructure, if there is a relationship between changed variables,
-                                            the function will modify the content again, in that case the funciton returns a promise, if not then
-                                            no further change was required
-                                            but the origninal file was not updated with the original change, so that is why in both cases, we need to update content.
+                                            
                                             */
-                                            if(promise) modifyPromises.push(promise)
+                                            if(pendingUpdates[0]) modifyPromises.push(pendingUpdates[0])
                                             else {
                                                 modifyPromises.push(plugin.app.vault.modify(key, value))
                                             }
+
+                                            if(pendingUpdates[1]) {
+                                                pendingRenames.set(pendingUpdates[1][0], pendingUpdates[1][1])
+                                            }
                                         })
+                                        console.groupEnd();
 
                                         Promise.allSettled(modifyPromises).then(settledModifyPromises => modifyPromisesHandler(settledModifyPromises))
                                         console.log(`%cWaiting for: modifyPromises...`, `color: orange`)
+
+                                        modifyFolderStructure(plugin, pendingRenames)
+
                                         console.groupEnd();
 
                                         function modifyPromisesHandler(settledModifyPromises: PromiseSettledResult<void>[]) {
@@ -1123,6 +1129,7 @@ export class Scanner {
 
                                             console.groupEnd();
                                         }
+
                                     }
                                 })
                                 console.log(`%cWaiting for: User Input(newTagName)...`, `color: orange`)
