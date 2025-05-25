@@ -1,11 +1,15 @@
 import { CompressedScanner, Scanner } from "Scanner";
 
-import { ItemView, WorkspaceLeaf, Menu, Notice, MenuItem, TFile, Plugin } from "obsidian"
+import { ItemView, WorkspaceLeaf, Menu, Notice, MenuItem, TFile, Plugin, TextComponent } from "obsidian"
 import * as fs from "fs";
 import TagsPlus from "main";
+import Fuse from "fuse.js";
+
 
 export const VIEW_TYPE_TAGSCANNER = "tagScanner-view"
 export const TAGVALUE_FORMAT: RegExp = /^(?:\s*!?\s*[ßüöäÜÖÄa-zA-z0-9_\-\/]+\s*)(?:&\s*!?\s*[ßüöäÜÖÄa-zA-z0-9_\-\/]+\s*)*$/
+
+const BACKGROUND_COLOR = ""
 
 export class TagScannerView extends ItemView {
     
@@ -62,6 +66,8 @@ export class TagScannerView extends ItemView {
         //linkToCSS.rel = "stylesheet";
 
         content.empty();
+        //this.loadSearchHeader()
+
 
         // Add an event listener to the container element for the contextmenu event
         content.addEventListener('contextmenu', (event: MouseEvent) => {
@@ -127,7 +133,7 @@ export class TagScannerView extends ItemView {
         console.log(`Added EventListener: "Create Root-Scanner"`);
         console.groupEnd();
 
-        this.loadSearchHeader()
+
 
         this.loadScannerStructure();
         console.groupEnd();
@@ -226,9 +232,12 @@ export class TagScannerView extends ItemView {
     }
 
 
-    private loadSearchHeader(): void {
+    /*private loadSearchHeader(): void {
 
-    }
+        const header = this.contentEl.createDiv({ cls: "search-header" });
+        const
+        const searchbar = header.createEl("input", {cls: "searchbar"})
+    }*/
 
 
     private stringLogicToBool(string: string, boolValues: {[key: string]: boolean}): boolean {
@@ -358,7 +367,22 @@ export function createInputField(container: HTMLElement, defaultValue: string = 
         console.groupEnd();
     }
 
+    const tags = Object.keys(this.app.metadataCache.getTags());
+    const fuse = new Fuse(tags, { includeScore: true, threshold: 0.3 });
+
+    console.groupCollapsed("Tag List")
+    console.log(tags)
+    console.log(fuse)
+    console.groupEnd()
+
     const inputField = container.createEl("input", {cls: "inputField", value: defaultValue});
+    const dropdown = container.createEl("ul", {cls: "tag-suggestions"})
+    console.log(dropdown)
+    dropdown.style.position = "absolute";
+    dropdown.style.top = `${inputField.offsetTop + inputField.offsetHeight}px`;
+    dropdown.style.left = `${inputField.offsetLeft}px`;
+    dropdown.style.width = `${inputField.offsetWidth}px`; // optional
+
 
     addHoverHighlightTo(inputField);
     addRenamingHighlightTo(container);
@@ -366,17 +390,42 @@ export function createInputField(container: HTMLElement, defaultValue: string = 
     inputField.focus();
     if(select) inputField.select();
     
+    console.log(dropdown)
 
     container.addEventListener("contextmenu", (ev) => ev.stopPropagation());
+    inputField.addEventListener("input", (input) => {
+      
+        //clear old results
+
+        dropdown.innerHTML = ""
+        const value = inputField.value
+        dropdown.style.display = "block"
+
+        const results = fuse.search(value)
+
+
+        for (const result of results) {
+          const li = dropdown.createEl("li", { cls:"tag-suggestion" , text: result.item });
+          addHoverHighlightTo(li)
+          li.onclick =  () => {
+            inputField.value = result.item
+            dropdown.style.display = "none"
+          };
+        }
+      
+    })
     inputField.addEventListener("keypress", (ev) => {
         if(ev.key == "Enter") {
             if(!restriction) {
                 onEnter(ev)
+                dropdown.style.display = "none"
+
             }
             else {         
                 if(restriction.test(inputField.value)) {
                     onEnter(ev);
                     removeRenamingHighlightFrom(container)
+                    dropdown.style.display = "none"
                 }
                 else {
                     new Notice(`"${inputField.value}" is invalid tag value!`)
@@ -395,6 +444,7 @@ export function createInputField(container: HTMLElement, defaultValue: string = 
 
     console.groupEnd();
     return inputField;
+    
 }
 
 export function createEmptyHeader(container: HTMLElement): HTMLDivElement {
